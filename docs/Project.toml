@@ -1,0 +1,7 @@
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+TableOps = "5b1dbecd-b85c-4d60-bfa7-1788e04064ac"
+
+[compat]
+Documenter = "1"
+TableOps = "0.1"

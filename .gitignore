@@ -1,0 +1,34 @@
+# Allowlist: everything not listed here is ignored.
+# Add new top-level paths, and new docs/ entries, below.
+/*
+!/.github/
+!/.gitignore
+!/CHANGELOG.md
+!/CODE_OF_CONDUCT.md
+!/CONTRIBUTING.md
+!/LICENSE
+!/Project.toml
+!/README.md
+!/SECURITY.md
+!/bench/
+!/src/
+!/test/
+
+!/docs/
+/docs/*
+!/docs/Project.toml
+!/docs/make.jl
+!/docs/src/
+
+# Ignored inside allowed directories
+Manifest*.toml
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+*.jl.*.mem
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+.DS_Store
