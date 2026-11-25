@@ -9,7 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `Table`: a table type that wraps any Tables.jl table without copying, or
-  builds one from keyword columns.
+- `Table`: a table type that keeps the column vectors of any Tables.jl table
+  (row tables are converted to columns), or builds one from keyword columns.
+- Column access with `t.col`, `names`, `copy`, `isequal`, `==` and the Tables.jl
+  interface for `Table`.
+- `as_table`, `nrow` and `ncol`.
 - Package skeleton: module, test suite with Aqua.jl, documentation with the
   design, CI on Julia 1.10 and the latest release.

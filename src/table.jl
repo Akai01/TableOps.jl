@@ -13,6 +13,15 @@ as they are, so changing a vector in place changes every table that holds
 it. A column that is not an `AbstractVector` is collected into one. A
 `Table` passed to `Table` is returned as is.
 
+`t.revenue` returns the stored column, whatever the column is called, and
+throws an `ArgumentError` with a suggestion for an unknown name. A `Table`
+cannot be changed in place: `t.revenue = v` throws. `names(t)` returns the
+column names as a `Vector{Symbol}` (a copy). `copy(t)` copies every column
+with `copy`, so the result is independent of `t` except for the elements
+themselves: a column of vectors shares its inner vectors. `isequal` compares
+names and columns with `isequal`; `==` follows Julia's three-valued rule and
+can return `missing`.
+
 Every column must use 1-based indexing, all names must be unique, and all
 columns must have the same length; otherwise an `ArgumentError` says how to
 fix it.
@@ -74,12 +83,18 @@ end
 
 Table(t::Table) = t
 
+function _vectorfix(n::Symbol, v)::String
+    arg = Base.isidentifier(n) ? String(n) : "var\"$n\""
+    v isa Tuple && return "Convert it to a vector: $arg = collect(x)."
+    "Wrap a single value in a vector: $arg = [$(_fmt_value(v))]."
+end
+
 function Table(; kwargs...)
     names = collect(Symbol, keys(kwargs))
     columns = AbstractVector[]
     for (n, v) in kwargs
         v isa AbstractVector || _argerror(:Table, "column $n is not a vector", v,
-            "Wrap a single value in a vector: $n = [1].")
+            _vectorfix(n, v))
         push!(columns, v)
     end
     _checkcolumns(names, columns)
@@ -90,3 +105,131 @@ _istable(x) = x isa AbstractTable || Tables.istable(x)
 
 _table(x::AbstractTable) = x
 _table(x) = Table(x)
+
+function _available(names::Vector{Symbol})::String
+    isempty(names) && return "The table has no columns."
+    list = join((repr(n) for n in first(names, 10)), ", ")
+    length(names) > 10 ? "Available columns: $list … ($(length(names)) columns)." :
+        "Available columns: $list."
+end
+
+function _column(t::Table, name::Symbol, verb::Symbol)::AbstractVector
+    i = get(getfield(t, :lookup), name, 0)
+    i == 0 || return getfield(t, :columns)[i]
+    names = getfield(t, :names)
+    near = _suggest(name, names)
+    _argerror(verb, "column not found", name,
+        near === nothing ? _available(names) : "Did you mean $(repr(near))?")
+end
+
+Base.getproperty(t::Table, name::Symbol) = _column(t, name, :getproperty)
+
+Base.setproperty!(t::Table, name::Symbol, v) = _argerror(:setproperty!,
+    "a Table cannot be changed in place", name,
+    "Use mutate to get a new table with the changed column.")
+
+Base.propertynames(t::Table, private::Bool = false) = Tuple(getfield(t, :names))
+
+"""
+    names(t::Table)
+
+The column names of `t` as a `Vector{Symbol}`. The vector is a copy.
+
+# Examples
+```jldoctest
+julia> using TableOps
+
+julia> names(Table(; a = [1, 2], b = ["x", "y"]))
+2-element Vector{Symbol}:
+ :a
+ :b
+```
+"""
+Base.names(t::Table) = copy(getfield(t, :names))
+
+"""
+    nrow(t::Table)
+
+The number of rows of `t`. A table with no columns has no rows.
+
+# Examples
+```jldoctest
+julia> using TableOps
+
+julia> nrow(Table(; a = [1, 2, 3]))
+3
+
+julia> nrow(Table())
+0
+```
+"""
+nrow(t::Table)::Int = isempty(getfield(t, :columns)) ? 0 : length(getfield(t, :columns)[1])
+
+"""
+    ncol(t::Table)
+
+The number of columns of `t`.
+
+# Examples
+```jldoctest
+julia> using TableOps
+
+julia> ncol(Table(; a = [1, 2, 3], b = ["x", "y", "z"]))
+2
+```
+"""
+ncol(t::Table) = length(getfield(t, :names))
+
+"""
+    as_table(x)
+
+Convert `x` to a `Table`: a `Table` is returned as is, and any other
+Tables.jl table is wrapped as in `Table(x)`.
+
+# Examples
+```jldoctest
+julia> using TableOps
+
+julia> as_table((a = [1, 2],)) isa Table
+true
+
+julia> t = Table(; a = [1]); as_table(t) === t
+true
+```
+"""
+as_table(t::Table) = t
+as_table(x) = Table(x)
+
+Base.copy(t::Table) = _newtable(copy(getfield(t, :names)),
+    AbstractVector[copy(c) for c in getfield(t, :columns)])
+
+function Base.isequal(a::Table, b::Table)
+    getfield(a, :names) == getfield(b, :names) || return false
+    ca, cb = getfield(a, :columns), getfield(b, :columns)
+    all(i -> isequal(ca[i], cb[i]), eachindex(ca))
+end
+
+Base.hash(t::Table, h::UInt) =
+    hash(getfield(t, :columns), hash(getfield(t, :names), hash(:Table, h)))
+
+function Base.:(==)(a::Table, b::Table)
+    getfield(a, :names) == getfield(b, :names) || return false
+    nrow(a) == nrow(b) || return false
+    ca, cb = getfield(a, :columns), getfield(b, :columns)
+    unknown = false
+    for i in eachindex(ca)
+        r = ca[i] == cb[i]
+        r === false && return false
+        unknown |= ismissing(r)
+    end
+    unknown ? missing : true
+end
+
+Tables.istable(::Type{Table}) = true
+Tables.columnaccess(::Type{Table}) = true
+Tables.columns(t::Table) = t
+Tables.getcolumn(t::Table, i::Int) = getfield(t, :columns)[i]
+Tables.getcolumn(t::Table, name::Symbol) = _column(t, name, :getcolumn)
+Tables.columnnames(t::Table) = copy(getfield(t, :names))
+Tables.schema(t::Table) =
+    Tables.Schema(getfield(t, :names), Type[eltype(c) for c in getfield(t, :columns)])

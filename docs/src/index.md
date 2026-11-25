@@ -9,4 +9,7 @@ table, in pure Julia with Tables.jl as the only dependency.
 ```@docs
 TableOps
 Table
+as_table
+nrow
+ncol
 ```

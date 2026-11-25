@@ -7,7 +7,7 @@ module TableOps
 
 import Tables
 
-export Table
+export Table, as_table, nrow, ncol
 
 include("errors.jl")
 include("table.jl")
