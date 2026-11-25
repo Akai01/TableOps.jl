@@ -7,6 +7,9 @@ module TableOps
 
 import Tables
 
+export Table
+
 include("errors.jl")
+include("table.jl")
 
 end

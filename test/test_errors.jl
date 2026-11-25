@@ -41,5 +41,7 @@ using Test, TableOps
         @test msg(repeat("x", 59)) == "v: w. Got \"" * repeat("x", 58) * "…. f"
         m = msg(collect(1:1000))
         @test endswith(m, "…. f") && length(m) < 100
+        @test msg(Text("a has 3 rows, b has 2")) == "v: w. Got a has 3 rows, b has 2. f"
+        @test msg(Text(repeat("y", 100))) == "v: w. Got " * repeat("y", 100) * ". f"
     end
 end

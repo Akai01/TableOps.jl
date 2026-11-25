@@ -3,6 +3,8 @@ function _fmt_value(value)
     length(s) > 60 ? first(s, 59) * "…" : s
 end
 
+_fmt_value(t::Text) = t.content
+
 function _argerror(verb::Symbol, what::String, value, fix::String)
     throw(ArgumentError("$verb: $what. Got $(_fmt_value(value)). $fix"))
 end

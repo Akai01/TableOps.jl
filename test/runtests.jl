@@ -4,6 +4,7 @@ import Aqua
 
 @testset "TableOps" begin
     include("test_errors.jl")
+    include("test_table.jl")
 
     @testset "Aqua quality checks" begin
         Aqua.test_all(TableOps; ambiguities=false)
