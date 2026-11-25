@@ -7,4 +7,6 @@ module TableOps
 
 import Tables
 
+include("errors.jl")
+
 end
