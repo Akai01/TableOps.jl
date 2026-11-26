@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `slice_min` and `slice_max`: the `n` smallest or largest rows with
+  `with_ties`; `missing` is never selected, and in a column with `missing`
+  asking for more rows than there are known values is an error.
 - `slice`, `slice_head` and `slice_tail`: rows by number (out of range is an
   error that shows the valid range), the first or the last `n` rows.
 - `distinct`: the first row of each distinct key, in order; `missing` is one

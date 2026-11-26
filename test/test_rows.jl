@@ -677,3 +677,143 @@ end
         @test msg(() -> v(5; n = 1)) == notable(name)
     end
 end
+
+@testset "slice_min and slice_max" begin
+    m = Table(; x = Union{Missing,Int}[3, 1, 2, 1, missing], i = [1, 2, 3, 4, 5])
+    mi = slice_min(m, :x)
+    cm = Union{Missing,Int}
+    n1(v, got) = "$v: n must be a whole number of 0 or more. Got $got. " *
+        "Write, for example, n = 3."
+    k2(v, col, have, n, fixcol) = "$v: too few values that are not missing. " *
+        "Got $col has $have of them, n = $n. Use n = $have or less, or drop the " *
+        "missing rows first with where(t, $fixcol => each(!ismissing))."
+    k1(v, got) = "$v: needs a column name. Got $got. Write $v(t, :x; n = 3)."
+    q1(v) = "$v: with_ties must be true or false. Got 1. " *
+        "Write with_ties = true or with_ties = false."
+    @test mi.i == [2, 4] && mi.x == [1, 1]
+    @test slice_min(m, :x; with_ties = false).i == [2]
+    @test slice_min(m, :x; n = 2).i == [2, 4]
+    @test slice_min(m, :x; n = 3).i == [2, 4, 3]
+    @test slice_min(m, :x; n = 3, with_ties = false).i == [2, 4, 3]
+    @test slice_min(m, :x; n = 4).i == [2, 4, 3, 1]
+    @test slice_max(m, :x).i == [1] && slice_max(m, :x; n = 2).i == [1, 3]
+    @test slice_max(m, :x; n = 3).i == [1, 3, 2, 4]
+    @test slice_max(m, :x; n = 3, with_ties = false).i == [1, 3, 2]
+    @test slice_max(m, :x; n = 4).i == [1, 3, 2, 4]
+    @test same_table(slice_min(m, :x; n = 0), Table(; x = cm[], i = Int[]))
+    @test same_table(slice_min(m, :x; n = 0, with_ties = false),
+        Table(; x = cm[], i = Int[]))
+    @test same_table(check_forms_agree(slice_min, m, :x; n = 2), slice_min(m, :x; n = 2))
+    @test same_table(check_forms_agree(slice_max, m, :x; n = 2), slice_max(m, :x; n = 2))
+    @test same_table(slice_min(m, "x"), mi)
+    @test rc(mi)[1] !== rc(m)[1] && rn(mi) !== rn(m)
+    @test same_table(m |> slice_max(:x; n = 2, with_ties = false), slice_max(m, :x; n = 2))
+    @test slice_min(:x) isa Function && slice_max(:x; n = 2) isa Function
+    @test same_table(slice_min(m, :x; n = UInt8(2)), slice_min(m, :x; n = 2))
+    @test slice_min(Table(; x = [2, 1]), :x; n = typemax(UInt)).x == [1, 2]
+    @test same_table(slice_max(m, :x; n = 4), slice_max(m, :x; n = 4, with_ties = false))
+    p = Table(; x = [2, 1], i = [1, 2])
+    @test slice_min(p, :x; n = 5).i == [2, 1] && slice_max(p, :x; n = 5).i == [1, 2]
+    @test slice_min(p, :x; n = big(10)^30).i == [2, 1]
+    @test slice_max(p, :x; n = typemax(Int)).i == [1, 2]
+    @test rc(slice_min(p, :x; n = 5))[1] !== rc(p)[1]
+    f = Table(; x = [1.0, NaN, 2.0, NaN], i = [1, 2, 3, 4])
+    @test slice_max(f, :x).i == [2, 4] && slice_min(f, :x).i == [1]
+    @test slice_max(f, :x; with_ties = false).i == [2]
+    @test slice_max(f, :x; n = 3).i == [2, 4, 3]
+    @test slice_min(f, :x; n = 3).i == [1, 3, 2, 4]
+    @test slice_min(Table(; x = [0.0, -0.0, 1.0], i = [1, 2, 3]), :x).i == [1, 2]
+    @test slice_max(Table(; x = [-0.0, 0.0, -1.0], i = [1, 2, 3]), :x).i == [1, 2]
+    @test slice_min(Table(; x = [0.0, -0.0], i = [1, 2]), :x; with_ties = false).i == [1]
+    @test slice_max(Table(; s = ["b", "c", "a"], i = [1, 2, 3]), :s).i == [2]
+    @test slice_min(Table(; s = ["b", "c", "a"], i = [1, 2, 3]), :s).i == [3]
+    @test slice_max(Table(; b = [false, true, true], i = [1, 2, 3]), :b).i == [2, 3]
+    @test slice_min(Table(; var"unit price" = [2.0, 1.0], i = [1, 2]),
+        Symbol("unit price")).i == [2]
+    @test slice_min(Table(; 名前 = [2, 1], i = [1, 2]), :名前).i == [2]
+    z = Table(; x = Int[], i = Int[])
+    @test same_table(slice_min(z, :x; n = 3), z) && same_table(slice_max(z, :x), z)
+    @test same_table(slice_min(z, :x; n = 0), z)
+    allm = Table(; x = [missing, missing], i = [1, 2])
+    @test same_table(slice_min(allm, :x; n = 0), Table(; x = Missing[], i = Int[]))
+    @test slice_min(Table(; x = [4], i = [1]), :x).i == [1]
+    @test slice_max(Table(; x = [4], i = [1]), :x; n = 3).i == [1]
+    check_input_unchanged(x -> slice_max(x, :x; n = 2), m)
+    check_concrete_eltypes(slice_min(m, :x; n = 2))
+    @test @inferred(TableOps._minmax_rows(:slice_min, m, :x, 2, true, false)) == [2, 4]
+    @test @inferred(TableOps._minmax_rows(:slice_max, m, :x, 3, false, true)) == [1, 3, 2]
+    @test @inferred(TableOps._minmaxargs(:slice_min, :x, 2, true)) === (:x, 2, true)
+    @test @inferred(TableOps._minmax_rows(:slice_max, m, :x, 2, true, true)) isa Vector{Int}
+    @test @inferred(TableOps._extend_ties([1, 1, 2], [1, 2, 3], 1, 3)) === 2
+    @test @inferred(TableOps._slice_minmax(:slice_min, m, :x, 2, true, false)) isa Table
+    @test msg(() -> slice_min(m, :x; n = 5)) == k2(:slice_min, "x", 4, 5, ":x")
+    @test msg(() -> slice_max(m, :x; n = 5)) == k2(:slice_max, "x", 4, 5, ":x")
+    @test msg(() -> slice_max(allm, :x)) == k2(:slice_max, "x", 0, 1, ":x")
+    @test msg(() -> slice_min(Table(; var"unit price" = Union{Missing,Int}[1, missing]),
+        "unit price"; n = 5)) ==
+        k2(:slice_min, "unit price", 1, 5, "Symbol(\"unit price\")")
+    @test msg(() -> slice_min(:x; n = 5)(m)) == msg(() -> slice_min(m, :x; n = 5))
+    @test msg(() -> slice_min(m, :zz)) ==
+        "slice_min: column not found. Got :zz. Available columns: :x, :i."
+    @test msg(() -> slice_max(m, :zz)) ==
+        "slice_max: column not found. Got :zz. Available columns: :x, :i."
+    @test msg(() -> slice_min(Table(; revenue = [1]), :revenu)) ==
+        "slice_min: column not found. Got :revenu. Did you mean :revenue?"
+    nocol(v) = "$v: column not found. Got :x. The table has no columns."
+    @test msg(() -> slice_min(Table(), :x)) == nocol(:slice_min)
+    @test msg(() -> slice_max(Table(), :x)) == nocol(:slice_max)
+    @test msg(() -> slice_min(:x)(Table())) == nocol(:slice_min)
+    @test msg(() -> Table() |> slice_max(:x; n = 2)) == nocol(:slice_max)
+    @test msg(() -> slice_min(m, 1)) == k1(:slice_min, 1)
+    @test msg(() -> slice_max(m, 1)) == k1(:slice_max, 1)
+    @test msg(() -> slice_max(1)) == k1(:slice_max, 1)
+    @test msg(() -> slice_min(m, :x; n = -1)) == n1(:slice_min, -1)
+    @test msg(() -> slice_max(m, :x; n = 1.5)) == n1(:slice_max, 1.5)
+    @test msg(() -> slice_min(:x; n = 1.5)) == n1(:slice_min, 1.5)
+    @test msg(() -> slice_max(m, :x; n = true)) == n1(:slice_max, true)
+    @test msg(() -> slice_min(m, :x; n = nothing)) == n1(:slice_min, "nothing")
+    @test msg(() -> slice_max(:x; n = nothing)) == n1(:slice_max, "nothing")
+    @test msg(() -> slice_min(m, :x; with_ties = 1)) == q1(:slice_min)
+    @test msg(() -> slice_max(m, :x; with_ties = 1)) == q1(:slice_max)
+    @test msg(() -> slice_max(:x; with_ties = 1)) == q1(:slice_max)
+    @test msg(() -> slice_min(5, :x)) ==
+        "slice_min: input is not a Tables.jl table. Got Int64. " *
+        "Pass a NamedTuple of vectors, a vector of NamedTuples or another " *
+        "Tables.jl table; collect a generator first: Table(collect(x))."
+    @test msg(() -> slice_min(Table(; c = [1 + 2im]), :c)) ==
+        "slice_min: a sort key has no order. Got c with element type Complex{Int64}. " *
+        "Sort keys need one element type that isless can compare, such as numbers, " *
+        "strings or dates; convert the column first."
+    @test msg(() -> slice_max(Table(; c = [1 + 2im]), :c)) ==
+        "slice_max: a sort key has no order. Got c with element type Complex{Int64}. " *
+        "Sort keys need one element type that isless can compare, such as numbers, " *
+        "strings or dates; convert the column first."
+end
+
+@testset "slice_min and slice_max on random tables" begin
+    rng = StableRNG(31)
+    n = 500
+    pool = Union{Missing,Float64}[-0.0, 0.0, 1.0, 2.0, NaN, missing]
+    x = [pool[Base.rand(rng, 1:6)] for _ in 1:n]
+    y = rint(rng, n, 8)
+    d = Table(; x, y, i = collect(1:n))
+    nz(v) = v isa AbstractFloat && iszero(v) ? zero(v) : v
+    rank(c, idx, mx) = sort(idx; alg = MergeSort,
+        lt = (a, b) -> mx ? isless(nz(c[b]), nz(c[a])) : isless(nz(c[a]), nz(c[b])))
+    for (col, c) in ((:y, y), (:x, x)), nn in (1, 3, 10, 50), ties in (true, false),
+        mx in (false, true)
+        present = [j for j in 1:n if !ismissing(c[j])]
+        ranked = rank(c, present, mx)
+        k = nn
+        while ties && k < length(ranked) && isequal(nz(c[ranked[k + 1]]), nz(c[ranked[nn]]))
+            k += 1
+        end
+        got = (mx ? slice_max : slice_min)(d, col; n = nn, with_ties = ties)
+        @test got.i == ranked[1:k]
+        @test isequal(got.x, x[ranked[1:k]])
+    end
+    @test msg(() -> slice_min(d, :x; n = 450)) == "slice_min: too few values that are " *
+        "not missing. Got x has $(count(!ismissing, x)) of them, n = 450. Use n = " *
+        "$(count(!ismissing, x)) or less, or drop the missing rows first with " *
+        "where(t, :x => each(!ismissing))."
+end

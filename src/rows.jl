@@ -482,3 +482,136 @@ function _slice_tail(t::Table, n::Int)
     N = nrow(t)
     _take(t, N - min(n, N) + 1:N)
 end
+
+function _minmaxargs(verb::Symbol, col, n, ties)
+    col isa Union{Symbol,AbstractString} || _argerror(verb, "needs a column name", col,
+        "Write $verb(t, :x; n = 3).")
+    n === nothing && _argerror(verb, "n must be a whole number of 0 or more", n,
+        "Write, for example, n = 3.")
+    Symbol(col), _checkn(verb, n), _checkflag(verb, :with_ties, ties)
+end
+
+"""
+    slice_min(t, col; n = 1, with_ties = true)
+    slice_min(col; n = 1, with_ties = true)
+
+Keep the `n` rows of `t` with the smallest values of the column `col`, in
+ranked order, smallest first. Rows with equal values keep their input order.
+The ranking is the order of [`arrange`](@ref): `NaN` is the largest value, and
+`-0.0` and `0.0` are the same value.
+
+With `with_ties = true` (the default) every row tied with the `n`-th value is
+kept, so the result can have more than `n` rows; with `with_ties = false` it
+has exactly `n`. `n` is a whole number of 0 or more (any integer type, but not
+`Bool`) and defaults to 1; when the column has no `missing`, an `n` larger than
+the number of rows returns all rows. `n = 0` gives no rows and keeps the column
+types.
+
+`missing` is last in the ranking and is never selected. If the column has
+`missing` values and `n` is larger than the number of other values, that is an
+error that shows both numbers; drop the `missing` rows first with
+[`where`](@ref), or lower `n`. The column needs one element type, apart from
+`missing`, that `isless` can compare. The result never shares columns with the
+input.
+
+# Examples
+```jldoctest
+julia> using TableOps
+
+julia> t = Table(; a = [3, 1, 2], b = ["x", "y", "z"]);
+
+julia> pull(slice_min(t, :a), :b)
+1-element Vector{String}:
+ "y"
+
+julia> pull(t |> slice_min(:a; n = 2), :b)
+2-element Vector{String}:
+ "y"
+ "z"
+```
+"""
+function slice_min(t, col; n = 1, with_ties = true)
+    c, k, w = _minmaxargs(:slice_min, col, n, with_ties)
+    _slice_minmax(:slice_min, _table(t, :slice_min), c, k, w, false)
+end
+function slice_min(col; n = 1, with_ties = true)
+    c, k, w = _minmaxargs(:slice_min, col, n, with_ties)
+    t -> _slice_minmax(:slice_min, _table(t, :slice_min), c, k, w, false)
+end
+
+"""
+    slice_max(t, col; n = 1, with_ties = true)
+    slice_max(col; n = 1, with_ties = true)
+
+Keep the `n` rows of `t` with the largest values of the column `col`, in
+ranked order, largest first. Rows with equal values keep their input order.
+The ranking is the order of [`arrange`](@ref) read backwards: `NaN` is the
+largest value, so it comes first, and `-0.0` and `0.0` are the same value.
+
+With `with_ties = true` (the default) every row tied with the `n`-th value is
+kept, so the result can have more than `n` rows; with `with_ties = false` it
+has exactly `n`. `n` is a whole number of 0 or more (any integer type, but not
+`Bool`) and defaults to 1; when the column has no `missing`, an `n` larger than
+the number of rows returns all rows. `n = 0` gives no rows and keeps the column
+types.
+
+`missing` is last in the ranking and is never selected. If the column has
+`missing` values and `n` is larger than the number of other values, that is an
+error that shows both numbers; drop the `missing` rows first with
+[`where`](@ref), or lower `n`. The column needs one element type, apart from
+`missing`, that `isless` can compare. The result never shares columns with the
+input.
+
+# Examples
+```jldoctest
+julia> using TableOps
+
+julia> t = Table(; a = [3, 1, 2], b = ["x", "y", "z"]);
+
+julia> pull(slice_max(t, :a; n = 2), :b)
+2-element Vector{String}:
+ "x"
+ "z"
+
+julia> pull(t |> slice_max(:a), :b)
+1-element Vector{String}:
+ "x"
+```
+"""
+function slice_max(t, col; n = 1, with_ties = true)
+    c, k, w = _minmaxargs(:slice_max, col, n, with_ties)
+    _slice_minmax(:slice_max, _table(t, :slice_max), c, k, w, true)
+end
+function slice_max(col; n = 1, with_ties = true)
+    c, k, w = _minmaxargs(:slice_max, col, n, with_ties)
+    t -> _slice_minmax(:slice_max, _table(t, :slice_max), c, k, w, true)
+end
+
+_slice_minmax(verb::Symbol, t::Table, col::Symbol, n::Int, ties::Bool, desc::Bool) =
+    _take(t, _minmax_rows(verb, t, col, n, ties, desc))
+
+function _minmax_rows(verb::Symbol, t::Table, col::Symbol, n::Int, ties::Bool,
+                      desc::Bool)
+    v = _column(t, col, verb)
+    _checksortable(verb, col, v)
+    N = length(v)
+    m = count(!ismissing, v)
+    n > m && m < N && _argerror(verb, "too few values that are not missing",
+        Text("$col has $m of them, n = $n"),
+        "Use n = $m or less, or drop the missing rows first with " *
+        "where(t, $(repr(col)) => each(!ismissing)).")
+    k = min(n, m)
+    k == 0 && return Int[]
+    o = _sortpass(v, collect(1:N), desc)::Vector{Int}
+    ties && (k = _extend_ties(_sortkey(v), o, k, m))
+    o[1:k]
+end
+
+# The call is the barrier for the typed loop.
+function _extend_ties(key::AbstractVector, o::Vector{Int}, k::Int, m::Int)
+    edge = key[o[k]]
+    while k < m && isequal(key[o[k + 1]], edge)
+        k += 1
+    end
+    k
+end

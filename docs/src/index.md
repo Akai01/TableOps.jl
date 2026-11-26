@@ -51,4 +51,6 @@ distinct
 slice
 slice_head
 slice_tail
+slice_min
+slice_max
 ```
