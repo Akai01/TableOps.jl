@@ -45,4 +45,6 @@ mutate
 
 ```@docs
 TableOps.where
+arrange
+desc
 ```

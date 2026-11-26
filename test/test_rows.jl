@@ -185,3 +185,169 @@ end
         allow_unnamed = true)
     @test @inferred(TableOps._where_rows(d, sp)) == findall(keep)
 end
+
+@testset "desc" begin
+    @test repr(desc(:k)) == "desc(:k)" && repr(desc("k")) == "desc(:k)"
+    @test repr(desc("a b")) == "desc(Symbol(\"a b\"))"
+    @test !(desc(:k) isa Function) && !(desc(:k) isa Symbol)
+    @test msg(() -> desc(1)) == "desc: needs a column name. Got 1. Write desc(:a)."
+    @test msg(() -> desc(desc(:a))) ==
+        "desc: needs a column name. Got desc(:a). Write desc(:a)."
+end
+
+@testset "arrange" begin
+    nokeys = "arrange: no sort keys. Got no keys. Name at least one column, " *
+        "for example arrange(t, :a) or arrange(t, desc(:a))."
+    notkey(x) = "arrange: not a sort key. Got $x. Use a column name such as :a, " *
+        "or desc(:a); give each key as its own argument."
+    noorder(n, T) = "arrange: a sort key has no order. Got $n with element type $T. " *
+        "Sort keys need one element type that isless can compare, such as numbers, " *
+        "strings or dates; convert the column first."
+    bygroup = "arrange: by_group needs a grouped table. Got by_group = true. " *
+        "Use group_by first, or leave out by_group."
+    flagmsg = "arrange: by_group must be true or false. Got 1. " *
+        "Write by_group = true or by_group = false."
+    um = Union{Missing,Int}
+    s = Table(; k = um[2, 1, 2, 1, missing], v = ["a", "b", "c", "d", "e"])
+    r = check_forms_agree(arrange, s, :k)
+    @test same_table(r, Table(; k = um[1, 1, 2, 2, missing], v = ["b", "d", "a", "c", "e"]))
+    @test rc(r)[1] !== rc(s)[1] && rn(r) !== rn(s)
+    @test same_table(arrange(s, desc(:k)),
+        Table(; k = um[2, 2, 1, 1, missing], v = ["a", "c", "b", "d", "e"]))
+    @test same_table(arrange(s, "k"), r)
+    @test same_table(arrange(s, desc("k")), arrange(s, desc(:k)))
+    # several keys, mixed directions
+    u = Table(; g = ["b", "a", "b", "a"], x = [1, 2, 0, 2], i = [1, 2, 3, 4])
+    @test arrange(u, :g, desc(:x)).i == [2, 4, 1, 3]
+    @test arrange(u, desc(:g), :x).i == [3, 1, 2, 4]
+    @test arrange(u, :g).i == [2, 4, 1, 3] && arrange(u, desc(:g)).i == [1, 3, 2, 4]
+    @test arrange(u, :x, :g).i == [3, 1, 2, 4]
+    @test arrange(u, :g, :g, :x).i == arrange(u, :g, :x).i
+    # NaN is after Inf and missing is last
+    f = Table(; x = Union{Missing,Float64}[NaN, 1.0, Inf, -Inf, missing, 0.0],
+                i = collect(1:6))
+    @test arrange(f, :x).i == [4, 6, 2, 3, 1, 5]
+    @test arrange(f, desc(:x)).i == [1, 3, 2, 6, 4, 5]
+    @test arrange(Table(; x = [NaN, NaN, 1.0], i = [1, 2, 3]), :x).i == [3, 1, 2]
+    pf = Table(; x = [1.0, NaN, -Inf, Inf, 0.0], i = [1, 2, 3, 4, 5])
+    @test arrange(pf, desc(:x)).i == [2, 4, 1, 5, 3]
+    # -0.0 and 0.0 are one key, so the second key decides
+    z = Table(; x = [0.0, -0.0, 0.0, -0.0], y = [4, 3, 2, 1])
+    @test arrange(z, :x).y == [4, 3, 2, 1]
+    @test arrange(z, :x, :y).y == [1, 2, 3, 4]
+    @test arrange(z, desc(:x), :y).y == [1, 2, 3, 4]
+    @test signbit.(arrange(z, :x, :y).x) == [true, false, true, false]
+    zm = Table(; x = Union{Missing,Float64}[0.0, -0.0, missing], y = [2, 1, 0])
+    @test arrange(zm, :x, :y).y == [1, 2, 0]
+    # strings sort by code point, not locale
+    ws = ["b", "B", "a", "ä", "10", "2"]
+    @test arrange(Table(; s = ws), :s).s == ["10", "2", "B", "a", "b", "ä"]
+    @test arrange(Table(; s = ws), desc(:s)).s == ["ä", "b", "a", "B", "2", "10"]
+    @test arrange(Table(; b = [true, false, true], i = [1, 2, 3]), :b).i == [2, 1, 3]
+    @test arrange(Table(; s = [:b, :a]), :s).s == [:a, :b]
+    q = Table(; var"unit price" = [2.0, 1.0], 名前 = ["x", "y"])
+    @test arrange(q, Symbol("unit price")).名前 == ["y", "x"]
+    @test arrange(q, "名前").名前 == ["x", "y"]
+    @test arrange(q, desc("unit price")).名前 == ["x", "y"]
+    # all-missing key, no rows, no columns, one row
+    mm = Table(; m = [missing, missing], i = [1, 2])
+    @test arrange(mm, :m).i == [1, 2] && arrange(mm, desc(:m)).i == [1, 2]
+    @test arrange(mm, :m, desc(:i)).i == [2, 1]
+    @test eltype(arrange(mm, :m).m) == Missing
+    am = Table(; m = Union{Missing,Int}[missing, missing], i = [1, 2])
+    @test same_table(arrange(am, :m), am) && same_table(arrange(am, desc(:m)), am)
+    @test arrange(am, :m, desc(:i)).i == [2, 1] && arrange(am, desc(:i), :m).i == [2, 1]
+    @test eltype(arrange(am, :m).m) == Union{Missing,Int}
+    fm = Table(; x = Union{Missing,Float64}[missing, missing], i = [1, 2])
+    @test same_table(arrange(fm, :x), fm) && same_table(arrange(fm, desc(:x)), fm)
+    @test arrange(fm, :x, desc(:i)).i == [2, 1]
+    @test eltype(arrange(fm, :x).x) == Union{Missing,Float64}
+    z0 = Table(; a = Int[], s = String[])
+    @test same_table(arrange(z0, :a), z0) && same_table(arrange(z0, desc(:s)), z0)
+    @test msg(() -> arrange(Table(), :a)) ==
+        "arrange: column not found. Got :a. The table has no columns."
+    @test same_table(arrange(Table(; a = [1]), :a), Table(; a = [1]))
+    # input unchanged, concrete types, pipe, foreign input
+    check_input_unchanged(x -> arrange(x, :g, desc(:x)), u)
+    check_concrete_eltypes(arrange(s, :k))
+    @test same_table(s |> arrange(:k), arrange(s, :k))
+    @test same_table(arrange(:g, desc(:x))(u), arrange(u, :g, desc(:x)))
+    @test same_table(arrange((k = [2, 1],), :k), Table(; k = [1, 2]))
+    @test arrange(:k) isa Function && arrange(desc(:k), :v) isa Function
+    @test same_table(arrange(s, :k; by_group = false), r)
+    # errors
+    @test msg(() -> arrange(s)) == nokeys
+    @test msg(() -> arrange()) == nokeys
+    @test msg(() -> arrange(5)) ==
+        "arrange: the first argument is neither a table nor a sort key. Got 5. " *
+        "Pass a table, or keys such as arrange(:a, desc(:b)) for the pipe form."
+    @test msg(() -> arrange(s, 5)) == notkey("5")
+    @test msg(() -> arrange(s, [:k, :v])) == notkey("[:k, :v]")
+    @test msg(() -> arrange(:k, 5)) == notkey("5")
+    @test msg(() -> arrange(s, :zz)) ==
+        "arrange: column not found. Got :zz. Available columns: :k, :v."
+    @test msg(() -> arrange(s, desc(:zz))) ==
+        "arrange: column not found. Got :zz. Available columns: :k, :v."
+    @test msg(() -> arrange(Table(; revenue = [1]), :revenu)) ==
+        "arrange: column not found. Got :revenu. Did you mean :revenue?"
+    @test msg(() -> arrange(Table(; c = [1 + 2im, 3 + 4im]), :c)) ==
+        noorder("c", "Complex{Int64}")
+    @test msg(() -> arrange(Table(; m = Any[1, "a"]), :m)) == noorder("m", "Any")
+    @test msg(() -> arrange(Table(; m = Union{Int,String}[1, "a"]), :m)) ==
+        noorder("m", "Union{Int64, String}")
+    @test msg(() -> arrange(s, :k; by_group = true)) == bygroup
+    @test msg(() -> arrange(:k; by_group = true)(s)) == bygroup
+    @test msg(() -> arrange(:k; by_group = 1)) == flagmsg
+    @test msg(() -> arrange(; by_group = 1)) == flagmsg
+    @test msg(() -> arrange(s, :k; by_group = 1)) == flagmsg
+end
+
+@testset "arrange on random tables" begin
+    # the reference is a stable merge sort with a comparator
+    nz(x) = x isa AbstractFloat && x == 0 ? zero(x) : x
+    function refcmp(a, b, d)
+        ismissing(a) && return ismissing(b) ? 0 : 1
+        ismissing(b) && return -1
+        x, y = nz(a), nz(b)
+        c = isless(x, y) ? -1 : isless(y, x) ? 1 : 0
+        d ? -c : c
+    end
+    function ref_arrange(cols, descs)
+        function lt(i, j)
+            for (c, d) in zip(cols, descs)
+                c3 = refcmp(c[i], c[j], d)
+                c3 != 0 && return c3 < 0
+            end
+            false
+        end
+        sort(collect(1:length(first(cols))); lt, alg = Base.Sort.MergeSort)
+    end
+    rng = StableRNG(5); n = 400
+    pool = Union{Missing,Float64}[-0.0, 0.0, 1.0, NaN, Inf, -Inf, missing]
+    d = Table(; k1 = rint(rng, n, 4), k2 = [pool[Base.rand(rng, 1:7)] for _ in 1:n],
+                k3 = [["b", "a", "B", ""][Base.rand(rng, 1:4)] for _ in 1:n],
+                k4 = Union{Missing,Int}[Base.rand(rng) < 0.2 ? missing :
+                                        Base.rand(rng, 1:3) for _ in 1:n],
+                id = collect(1:n))
+    combos = [[:k1], [:k2], [:k3, :k1], [:k4, :k2], [:k1, :k3, :k4], [:k2, :k4]]
+    for ks in combos, flips in (falses(length(ks)), trues(length(ks)),
+                                [isodd(i) for i in 1:length(ks)])
+        spec = [f ? desc(k) : k for (k, f) in zip(ks, flips)]
+        rows = ref_arrange([getproperty(d, k) for k in ks], flips)
+        got = arrange(d, spec...)
+        @test got.id == rows
+        @test same_table(got,
+            Table(; (nm => c[rows] for (nm, c) in zip(rn(d), rc(d)))...))
+    end
+    cols = (d.k1, d.k3, d.k2, d.k4, Float64.(filter(!ismissing, d.k2)),
+            Union{Missing,Int}[missing, missing], Union{Missing,Float64}[missing, missing],
+            [missing, missing])
+    for c in cols
+        @test @inferred(TableOps._sortpass(c, collect(1:length(c)), false)) isa Vector{Int}
+        @test @inferred(TableOps._sortpass(c, collect(1:length(c)), true)) isa Vector{Int}
+    end
+    mi = Union{Missing,Int}[3, missing, 1]
+    @test TableOps._sortpass(mi, [1, 2, 3], false) == [3, 1, 2]
+    @test TableOps._sortpass(mi, [1, 2, 3], true) == [1, 3, 2]
+    @test TableOps._sortpass([2, 2, 1], [2, 1, 3], false) == [3, 2, 1]
+end
