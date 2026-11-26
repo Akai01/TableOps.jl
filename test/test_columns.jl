@@ -31,7 +31,8 @@ isdefined(@__MODULE__, :same_table) || include("checks.jl")
     for T in (Int, String, Union{Missing,Int}, Missing, Vector{Int}, Float64)
         @test is_concrete_eltype(T)
     end
-    for T in (Any, Real, Union{Int,String}, Union{Missing,Real}, Number)
+    for T in (Any, Real, Union{Int,String}, Union{Missing,Real}, Number,
+              Union{Missing,Int,String})
         @test !is_concrete_eltype(T)
     end
     # a stand-in verb with both forms
@@ -115,6 +116,7 @@ TableOps.resolve(::LastColumn, t::Table) = [last(names(t))]
         "select: the first argument is neither a table nor a column picker. Got 5. " *
         "Pass a table, or pickers such as select(:a, :b) for the pipe form."
     @test msg(() -> select(:a, 5)) == m1
+    @test msg(() -> select(t, except(5))) == m1
 end
 
 @testset "rename" begin
@@ -203,6 +205,14 @@ end
         "Write before = :a or after = :a."
     @test msg(() -> relocate(t4, :zz)) ==
         "relocate: column not found. Got :zz. Available columns: :a, :b, :c, :d."
+    @test msg(() -> relocate(t4, :a, 5)) ==
+        "relocate: not a column picker. Got 5. Use a name, a vector of names, " *
+        "a predicate such as startswith(\"a\") or contains(r\"^q\"), everything(), " *
+        "of_type(T) or except(...)."
+    @test msg(() -> relocate(t4, [1])) ==
+        "relocate: a vector of columns holds only names. Got 1. " *
+        "Put Symbols or Strings in the vector; " *
+        "give a predicate or picker as its own argument."
     @test msg(() -> relocate(5, :a)) ==
         "relocate: the first argument is neither a table nor a column picker. Got 5. " *
         "Pass a table, or pickers such as relocate(:a; after = :b) for the pipe form."
@@ -342,7 +352,7 @@ end
     @test eltype(mutate(z; c = :a => each(x -> x + 1)).c) == Int
     @test mutate(z; c = [1]).c == Int[] && mutate(z; c = Int[]).c == Int[]
     @test nrow(mutate(Table(); a = 1)) == 0 && cn(mutate(Table(); a = 1)) == [:a]
-    one = Table(; a = [1]); @test mutate(one; c = [5]).c == [5]
+    row1 = Table(; a = [1]); @test mutate(row1; c = [5]).c == [5]
     # Unicode and space names
     u = Table(; var"unit price" = [1.0, 2.0], 名前 = ["x", "y"])
     @test mutate(u; var"total x" = Symbol("unit price") => each(x -> 2x)).var"total x" ==
@@ -412,7 +422,7 @@ end
     @test msg(() -> mutate(Table(); a = [1, 2])) ==
         "mutate: a column has the wrong length. Got a has 2 rows, the table has 0. " *
         "Build a table from vectors with Table(; name = vector)."
-    @test msg(() -> mutate(one; c = [5, 6])) ==
+    @test msg(() -> mutate(row1; c = [5, 6])) ==
         "mutate: a column has the wrong length. Got c has 2 rows, the table has 1. " *
         "Return a single value (repeated for every row) or exactly 1 values."
     c5 = "mutate: a value must be a single value or a vector. Got "
@@ -432,12 +442,67 @@ end
         c5 * "Base.Generator"
     @test msg(() -> mutate(t; c = :a => (x -> (y for y in x))))[1:length(c5) + 14] ==
         c5 * "Base.Generator"
+    # lazy iterators are an error, by value and from a function
+    lazies = (skipmissing([1, 2, 3]), zip(1:3, 4:6), enumerate([1, 2, 3]),
+        Iterators.filter(isodd, 1:3), Iterators.take(1:5, 3), Iterators.drop(1:5, 2),
+        Iterators.flatten([[1], [2]]), Iterators.cycle([1]), Iterators.repeated(1),
+        Iterators.product(1:2, 1:2), Iterators.partition(1:4, 2),
+        Iterators.takewhile(<(3), 1:5), Iterators.dropwhile(<(3), 1:5),
+        Iterators.accumulate(+, 1:3), Iterators.Stateful(1:3), Iterators.rest(1:3, 2),
+        values(Dict(:a => 1)), keys(Dict(:a => 1)))
+    for x in lazies
+        for m in (msg(() -> mutate(t; c = x)), msg(() -> mutate(t; c = :a => (_ -> x))))
+            @test startswith(m, c5) && endswith(m, c5fix)
+        end
+    end
+    @test msg(() -> mutate(t; c = skipmissing([1, 2, 3]))) ==
+        c5 * "skipmissing([1, 2, 3])" * c5fix
+    @test msg(() -> mutate(t; c = values(Dict(:a => 1)))) ==
+        c5 * repr(values(Dict(:a => 1))) * c5fix
+    # tables are an error; a vector of rows is a column
+    c8 = "mutate: a value is a whole table. Got "
+    c8fix = ". To add one of its columns write name = pull(other, :col); " *
+        "to combine tables use a join."
+    z3 = Table(; z = [1, 2, 3])
+    @test msg(() -> mutate(t; c = z3)) == c8 * TableOps._fmt_value(z3) * c8fix
+    @test msg(() -> mutate(t; c = :a => (_ -> z3))) == c8 * TableOps._fmt_value(z3) * c8fix
+    @test msg(() -> mutate(c = z3)) == c8 * TableOps._fmt_value(z3) * c8fix
+    @test msg(() -> mutate(t; c = (z = [1, 2, 3],))) ==
+        c5 * "(z = [1, 2, 3],)" * c5fix                      # C5 comes first
+    @test msg(() -> mutate(t; c = :a => (_ -> (z = [1, 2, 3],)))) ==
+        c5 * "(z = [1, 2, 3],)" * c5fix
+    rows3 = [(a = 1,), (a = 2,), (a = 3,)]
+    @test mutate(t; c = rows3).c == rows3
+    @test mutate(t; c = :a => (_ -> rows3)).c == rows3
+    @test mutate(t; c = :a => each(x -> (a = x,))).c == rows3
+    # nothing is an error, not a column or a constant
+    c9 = "mutate: a function returned nothing for c. Got nothing. " *
+        "Return a value; use missing for an absent one."
+    @test msg(() -> mutate(t; c = nothing)) == c9
+    @test msg(() -> mutate(c = nothing)) == c9
+    @test msg(() -> mutate(t; c = :a => (_ -> nothing))) == c9
+    @test msg(() -> mutate(t; c = tt -> nothing)) == c9
+    @test msg(() -> mutate(t; c = :a => each(_ -> nothing))) == c9
+    @test msg(() -> mutate(t; c = :a => (_ -> Any[nothing, nothing, nothing]))) == c9
+    @test msg(() -> mutate(t; c = :a => (_ -> Any[nothing, missing, nothing]))) == c9
+    @test msg(() -> mutate(t; c = [nothing])) == c9
+    @test msg(() -> mutate(Table(; a = Int[]); c = :a => each(_ -> nothing))) == c9
+    @test msg(() -> mutate(t; c = :a => (_ -> Any[1, nothing, 3]))) ==
+        "mutate: a column mixes element types. Got c holds Int64 and Nothing. " *
+        "Give the column one element type, for example by converting the values."
+    # the fix text names no function when none is used
+    @test msg(() -> mutate(t; d = Any[1, "a", 2])) ==
+        "mutate: a column mixes element types. Got d holds Int64 and String. " *
+        "Give the column one element type, for example by converting the values."
+    @test msg(() -> mutate(Table(; q = Any[1, "x", 2]); c = :q)) ==
+        "mutate: a column mixes element types. Got c holds Int64 and String. " *
+        "Give the column one element type, for example by converting the values."
     @test msg(() -> mutate(t; c = :a => each(x -> x == 1 ? 1 : 2.5))) ==
         "mutate: a column mixes element types. Got c holds Int64 and Float64. " *
-        "Make the function return one type, for example by converting inside it."
+        "Give the column one element type, for example by converting the values."
     @test msg(() -> mutate(t; c = :a => (x -> Union{Int,String}[1, "a", 2]))) ==
         "mutate: a column mixes element types. Got c holds Int64 and String. " *
-        "Make the function return one type, for example by converting inside it."
+        "Give the column one element type, for example by converting the values."
     @test msg(() -> mutate(t; c = :a => 5)) ==
         "mutate: the right side of => must be a function or each(f). Got 5. " *
         "Write :a => f, where f takes whole columns, " *

@@ -157,7 +157,7 @@ _notnames(verb::Symbol, x) = _argerror(verb,
     "Put Symbols or Strings in the vector; " *
     "give a predicate or picker as its own argument.")
 
-_ispicker(x) = x isa Union{Symbol,AbstractString,AbstractVector,Function,AbstractSelector}
+_ispicker(x) = x isa Union{_Plain,AbstractSelector}
 
 # The verb names the caller in errors.
 function _resolve(verb::Symbol, sel::AbstractSelector, t::Table)
@@ -186,7 +186,7 @@ function _resolve(verb::Symbol, sel::Function, t::Table)
     for n in getfield(t, :names)
         r = sel(String(n))
         r isa Bool || _argerror(verb, "a column predicate must return true or false",
-            Text("$(repr(String(n))) gave $(repr(r))"),
+            Text("$(repr(String(n))) gave $(_fmt_value(r))"),
             "Return a Bool, for example startswith(\"rev\") or n -> length(n) > 3.")
         r && push!(out, n)
     end

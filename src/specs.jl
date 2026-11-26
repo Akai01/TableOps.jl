@@ -69,18 +69,30 @@ function _spec(verb::Symbol, name::Symbol, x::Pair)
 end
 
 function _spec(verb::Symbol, name::Symbol, x)
-    _checkvalue(verb, x)
+    _checkvalue(verb, name, x)
     ColSpec(name, Symbol[], Returns(x), ())
 end
 
 # These are usually a forgotten collect.
-_notvalue(x) = x isa Union{Tuple,NamedTuple,Base.Generator,AbstractSet,AbstractDict} ||
-    (x isa AbstractArray && !(x isa AbstractVector))
+_notvalue(x) = !(x isa AbstractVector) &&
+    (x isa Union{Tuple,NamedTuple,Base.Generator,AbstractSet,AbstractDict,AbstractArray,
+                 Base.SkipMissing,Base.ValueIterator} ||
+     parentmodule(typeof(x)) === Base.Iterators)
 
-_checkvalue(verb::Symbol, x) = _notvalue(x) && _argerror(verb,
-    "a value must be a single value or a vector", x,
-    "Pass a vector with one value per row (collect a generator first), " *
-    "or wrap the value in a vector: name = [x].")
+function _checkvalue(verb::Symbol, name::Symbol, x)
+    _notvalue(x) && _argerror(verb, "a value must be a single value or a vector", x,
+        "Pass a vector with one value per row (collect a generator first), " *
+        "or wrap the value in a vector: name = [x].")
+    !(x isa AbstractVector) && _istable(x) && _argerror(verb,
+        "a value is a whole table", x,
+        "To add one of its columns write name = pull(other, :col); " *
+        "to combine tables use a join.")
+    x === nothing && _nothing(verb, name)
+end
+
+_nothing(verb::Symbol, name::Symbol) = _argerror(verb,
+    "a function returned nothing for $name", nothing,
+    "Return a value; use missing for an absent one.")
 
 _inputs(verb::Symbol, x::Union{Symbol,AbstractString}) = Symbol[Symbol(x)]
 function _inputs(verb::Symbol, x::AbstractVector)

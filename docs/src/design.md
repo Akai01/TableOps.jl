@@ -197,10 +197,14 @@ A function always receives **whole columns**:
 Column names may be `Symbol`s or `String`s in pickers and on the left of a
 `=>`. On the right of `name =`, only a `Symbol` names a column: a `String` there
 is a constant (`mutate(t, region = "EU")`). A vector whose length is neither 1
-nor the row count is an error. A tuple, `NamedTuple`, matrix, generator, set or
-dictionary, given as a value or returned by a function, is an error rather than
-a constant, so a forgotten `collect` is never repeated silently: write
-`name = [x]` to put one in every row.
+nor the row count is an error. A tuple, `NamedTuple`, matrix, set,
+dictionary, table, generator, `skipmissing`, `keys`, `values` or other
+`Base.Iterators` iterator (`zip`, `enumerate`, …), given as a value or
+returned by a function, is an error rather than a constant, so a forgotten
+`collect` is never repeated silently: write `name = [x]` to put one in every
+row. `nothing`, given as a value or returned by a function, or a column holding
+only `nothing`, is an error too (often a forgotten `return`); an absent value
+is `missing`.
 
 ### Column pickers
 
@@ -212,7 +216,9 @@ Wherever columns are chosen (`select`, `across`, `relocate`, `pivot_longer`,
   `endswith("_x")`, `contains("sales")`, `contains(r"^q[1-4]$")`, or any
   function `String -> Bool`;
 - `everything()`; `of_type(T)` (columns whose element type, ignoring `missing`,
-  is a subtype of `T`); `except(cols...)` (all columns but these).
+  is a subtype of `T`); `except(cols...)` (all columns but these). A column of
+  element type `Missing` is picked only when `Missing <: T`; an empty column of
+  element type `Union{}` is picked by every `of_type` *(own choice)*.
 
 `select` keeps the order in which columns are picked; a column picked twice
 appears once, at its first position. `select(t, new = :old)` renames while
@@ -330,6 +336,10 @@ Every verb has a documented, deterministic output order.
 - In `mutate`, a result of length 1 is repeated for every row; any other length
   that is not the table's (or group's) row count is an error showing both
   lengths *(own choice)*.
+- A `mutate` result with an abstract element type is narrowed to the one
+  concrete type it holds (plus `missing`); a mix of types is an error, stricter
+  than the combine rule below, which is for combining columns. An empty result
+  with no concrete type becomes a `Vector{Missing}` *(own choice)*.
 - In `summarize`, each result must be a single value per group; otherwise the
   error suggests `mutate`. `summarize` returns an ungrouped `Table` (a
   `PanelTable` for panels, see below), with the group columns first

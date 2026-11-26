@@ -1,3 +1,4 @@
+isdefined(@__MODULE__, :same_table) || include("checks.jl")
 import Tables, CSV, Arrow, DataFrames
 
 @testset "compat" begin
@@ -89,6 +90,13 @@ import Tables, CSV, Arrow, DataFrames
         a = IOBuffer(); Arrow.write(a, Table(; x = [1.5, missing])); seekstart(a)
         at = Arrow.Table(a)
         @test isequal(pull(at, :x), [1.5, missing])
+        w = DataFrames.DataFrame(z = [1, 2])
+        @test msg(() -> mutate(df; c = w)) ==
+            "mutate: a value is a whole table. Got " * TableOps._fmt_value(w) *
+            ". To add one of its columns write name = pull(other, :col); " *
+            "to combine tables use a join."
+        @test startswith(msg(() -> mutate(df; c = :a => (_ -> w))),
+            "mutate: a value is a whole table. Got ")
         y = pull(mutate(at; y = :x => each(x -> x)), :y)
         @test eltype(y) == Union{Missing,Float64} && isequal(y, [1.5, missing])
     end

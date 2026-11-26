@@ -11,7 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `mutate` for ungrouped tables: columns from `name = :col`, `:col => f`,
   `[:a, :b] => f`, `name = value` and `name = t -> …`. A tuple, `NamedTuple`,
-  matrix, generator, set or dictionary given as a value is an error, not a constant.
+  matrix, set, dictionary, table, generator, `skipmissing`, `keys`, `values` or
+  other `Base.Iterators` iterator, given as a value or returned by a function,
+  is an error, not a constant, and so is `nothing` (use `missing`). A column
+  that mixes element types is an error.
 - `select` (with renaming), `rename`, `relocate` and `pull`, each in table-first
   and pipe form.
 - `each` for elementwise column specifications.

@@ -54,18 +54,28 @@ function _newtable(names::Vector{Symbol}, columns::Vector{AbstractVector})::Tabl
     Table(names, columns, Dict{Symbol,Int}(n => i for (i, n) in enumerate(names)))
 end
 
-function _checkcolumns(names::Vector{Symbol}, columns::Vector{AbstractVector})
-    for (n, col) in zip(names, columns)
-        Base.has_offset_axes(col) && _argerror(:Table,
-            "column $n does not use 1-based indexing", axes(col),
-            "Convert it to a 1-based vector, for example with collect.")
-    end
+function _dupname(names::Vector{Symbol})::Union{Symbol,Nothing}
     seen = Set{Symbol}()
     for n in names
-        n in seen && _argerror(:Table, "duplicate column name", n,
-            "Give every column its own name.")
+        n in seen && return n
         push!(seen, n)
     end
+    nothing
+end
+
+_kwname(n::Symbol) = Base.isidentifier(n) ? String(n) : "var\"$n\""
+
+_checkaxes(verb::Symbol, name::Symbol, col) = Base.has_offset_axes(col) &&
+    _argerror(verb, "column $name does not use 1-based indexing", axes(col),
+        "Convert it to a 1-based vector, for example with collect.")
+
+function _checkcolumns(names::Vector{Symbol}, columns::Vector{AbstractVector})
+    for (n, col) in zip(names, columns)
+        _checkaxes(:Table, n, col)
+    end
+    d = _dupname(names)
+    d === nothing || _argerror(:Table, "duplicate column name", d,
+        "Give every column its own name.")
     for i in 2:length(columns)
         length(columns[i]) == length(columns[1]) && continue
         _argerror(:Table, "columns have different lengths",
@@ -115,7 +125,7 @@ end
 Table(t::Table) = t
 
 function _vectorfix(n::Symbol, v)::String
-    arg = Base.isidentifier(n) ? String(n) : "var\"$n\""
+    arg = _kwname(n)
     v isa Tuple && return "Convert it to a vector: $arg = collect(x)."
     "Wrap a single value in a vector: $arg = [$(_fmt_value(v))]."
 end

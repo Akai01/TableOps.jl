@@ -5,17 +5,6 @@ _firstarg(verb::Symbol, x, what::String, example::String) = _argerror(verb,
 _badvalue(verb::Symbol, key::Symbol, value) = _argerror(verb,
     "the value of $key must be a column name", value, "Write $verb(t; new = :old).")
 
-function _dupname(names::Vector{Symbol})::Union{Symbol,Nothing}
-    seen = Set{Symbol}()
-    for n in names
-        n in seen && return n
-        push!(seen, n)
-    end
-    nothing
-end
-
-_kwname(n::Symbol) = Base.isidentifier(n) ? String(n) : "var\"$n\""
-
 _isname(x) = x isa Union{Symbol,AbstractString}
 
 # A vector of non-names may be a row table, not a picker.
@@ -29,7 +18,7 @@ function _pickers(verb::Symbol, x, rest::Tuple, example::String)::Tuple
     (x, rest...)
 end
 
-function _checkvalues(verb::Symbol, renames)
+function _checkrenames(verb::Symbol, renames)
     for (new, old) in pairs(renames)
         _isname(old) || _badvalue(verb, new, old)
     end
@@ -71,13 +60,13 @@ julia> names(t |> select(:a))
 function select(x, rest...; kw...)
     _istable(x) && return _select(_table(x, :select), rest, kw)
     picks = _pickers(:select, x, rest, "pickers such as select(:a, :b)")
-    _checkvalues(:select, kw)
+    _checkrenames(:select, kw)
     t -> select(_table(t, :select), picks...; kw...)
 end
 
 function select(; kw...)
     isempty(kw) && _nopicks()
-    _checkvalues(:select, kw)
+    _checkrenames(:select, kw)
     t -> select(_table(t, :select); kw...)
 end
 
@@ -85,7 +74,7 @@ _nopicks() = _argerror(:select, "no columns picked", Text("an empty selection"),
     "Name at least one column, or use everything() for all of them.")
 
 function _select(t::Table, picks::Tuple, renames)::Table
-    _checkvalues(:select, renames)
+    _checkrenames(:select, renames)
     cols = getfield(t, :columns)
     names = _pickall(:select, picks, t)
     idx = Int[_position(t, n, :select) for n in names]
@@ -131,7 +120,7 @@ julia> names(t |> rename(; a = :b, b = :a))
 """
 rename(t; kw...) = _rename(_table(t, :rename), kw)
 function rename(; kw...)
-    _checkvalues(:rename, kw)
+    _checkrenames(:rename, kw)
     t -> rename(_table(t, :rename); kw...)
 end
 rename(p::Pair; kw...) = _renamepair(p)
@@ -142,7 +131,7 @@ _renamepair(p) = _argerror(:rename, "renames are keywords", p,
 
 function _rename(t::Table, renames)::Table
     names = copy(getfield(t, :names))
-    _checkvalues(:rename, renames)
+    _checkrenames(:rename, renames)
     done = Dict{Int,Symbol}()
     for (new, old) in pairs(renames)
         i = _position(t, Symbol(old), :rename)
@@ -295,14 +284,17 @@ in the order written and each sees the table with all earlier results, so
 A `Symbol` on the right of `name =` is a column, a `String` is a constant.
 A result of length 1 is repeated for every row; any other length except the row
 count is an error. A result that is not a `Vector` (a range, a view) is
-copied into one. A result that is a column of the table is copied, so two
-columns never share a vector; a vector you pass that is not a column of the table
-is kept as it is, not copied, as in `Table`. A result with an abstract element
+copied into one. A result that is a column of the table is copied, so a column
+that mutate makes never shares a vector with another column; a vector you
+pass that is not a column of the table is kept as it is, not copied, as in
+`Table`. A result with an abstract element
 type, such as `Vector{Any}`, becomes a vector of the one concrete type it
 holds (plus `missing`), or `Vector{Missing}` when it holds no value other than
-`missing`; a mixture of types is an error. A tuple, `NamedTuple`, matrix,
-generator, set or dictionary is an error, not a constant: write `name = [x]` to
-put one in every row. Unchanged columns are shared with `t`.
+`missing`; a mixture of types is an error. A tuple, `NamedTuple`, matrix, set,
+dictionary, table, generator, `skipmissing`, `keys`, `values` or other
+`Base.Iterators` iterator is an error, not a constant: write `name = [x]` to
+put one in every row. `nothing` is an error too;
+use `missing` for an absent value. Unchanged columns are shared with `t`.
 A specification without a name, such as `mutate(t, :a => sum)`, is an error.
 A table with no columns has no rows. The second form returns a function of
 a table, for use with `|>`.
@@ -355,6 +347,7 @@ end
 function _finish(verb::Symbol, name::Symbol, r, t::Table)::Vector
     n = nrow(t)
     v = _concrete(verb, name, _asvector(verb, name, r, n))
+    nonmissingtype(eltype(v)) === Nothing && _nothing(verb, name)
     if length(v) != n
         length(v) == 1 || _badlength(verb, name, length(v), t, n)
         v = _recycle(v, n)
@@ -365,12 +358,10 @@ end
 function _asvector(verb::Symbol, name::Symbol, r, n::Int)::Vector
     r isa Vector && return r
     if r isa AbstractVector
-        Base.has_offset_axes(r) && _argerror(verb,
-            "column $name does not use 1-based indexing", axes(r),
-            "Convert it to a 1-based vector, for example with collect.")
+        _checkaxes(verb, name, r)
         return Vector(r)
     end
-    _checkvalue(verb, r)
+    _checkvalue(verb, name, r)
     fill(r, n)
 end
 
@@ -392,7 +383,7 @@ function _scantypes(verb::Symbol, name::Symbol, v::Vector)
         elseif typeof(x) !== S
             _argerror(verb, "a column mixes element types",
                 Text("$name holds $S and $(typeof(x))"),
-                "Make the function return one type, for example by converting inside it.")
+                "Give the column one element type, for example by converting the values.")
         end
     end
     S, miss

@@ -92,6 +92,10 @@ end
         "resolve: a column predicate must return true or false. " *
         "Got \"a\" gave 1. " *
         "Return a Bool, for example startswith(\"rev\") or n -> length(n) > 3."
+    @test msg(() -> r(n -> "x"^100, mk([:a]))) ==
+        "resolve: a column predicate must return true or false. " *
+        "Got \"a\" gave \"" * "x"^58 * "…. " *
+        "Return a Bool, for example startswith(\"rev\") or n -> length(n) > 3."
     @test msg(() -> of_type(1)) ==
         "of_type: needs a type. Got 1. Write of_type(Int) or of_type(Real)."
     @test msg(() -> TableOps._resolve(:select, 5, t)) ==

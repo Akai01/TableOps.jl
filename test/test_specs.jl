@@ -89,6 +89,21 @@ isdefined(@__MODULE__, :same_table) || include("checks.jl")
     @test occursin("a value must be a single value or a vector. Got Base.Generator",
         msg(() -> S(:mutate, (), (; c = g))))
     @test S(:mutate, (), (; c = [(a = 1,)])) isa Vector       # wrapped: fine
+    @test msg(() -> S(:mutate, (), (; c = skipmissing([1])))) ==
+        "mutate: a value must be a single value or a vector. Got skipmissing([1]). " *
+        "Pass a vector with one value per row (collect a generator first), " *
+        "or wrap the value in a vector: name = [x]."
+    @test occursin("Got ", msg(() -> S(:mutate, (), (; c = zip(1:2, 3:4)))))
+    @test occursin("a value must be",
+        msg(() -> S(:mutate, (), (; c = Iterators.take(1:5, 2)))))
+    @test msg(() -> S(:mutate, (), (; c = Table(; z = [1])))) ==
+        "mutate: a value is a whole table. Got " * TableOps._fmt_value(Table(; z = [1])) *
+        ". To add one of its columns write name = pull(other, :col); " *
+        "to combine tables use a join."
+    @test msg(() -> S(:mutate, (), (; c = nothing))) ==
+        "mutate: a function returned nothing for c. Got nothing. " *
+        "Return a value; use missing for an absent one."
+    @test S(:mutate, (), (; c = [(a = 1,), (a = 2,)])) isa Vector
 end
 
 @testset "each" begin
