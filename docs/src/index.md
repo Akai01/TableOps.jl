@@ -30,3 +30,12 @@ except
 ```@docs
 each
 ```
+
+## Column verbs
+
+```@docs
+select
+TableOps.rename
+relocate
+pull
+```

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `select` (with renaming), `rename`, `relocate` and `pull`, each in table-first
+  and pipe form.
 - `each` for elementwise column specifications.
 - Column pickers: `everything`, `of_type`, `except`, name predicates,
   `AbstractSelector` and `resolve`.

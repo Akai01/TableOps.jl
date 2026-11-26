@@ -23,6 +23,13 @@ julia> resolve(::LastColumn, t::Table) = [last(names(t))];
 julia> resolve(LastColumn(), Table(; a = [1], b = [2]))
 1-element Vector{Symbol}:
  :b
+
+julia> select(Table(; a = [1], b = [2]), LastColumn())
+1×1 Table
+     b
+ Int64
+ ─────
+     2
 ```
 """
 abstract type AbstractSelector end
@@ -145,6 +152,11 @@ _notpicker(verb::Symbol, x) = _argerror(verb, "not a column picker", x,
     "Use a name, a vector of names, a predicate such as startswith(\"a\") " *
     "or contains(r\"^q\"), everything(), of_type(T) or except(...).")
 
+_notnames(verb::Symbol, x) = _argerror(verb,
+    "a vector of columns holds only names", x,
+    "Put Symbols or Strings in the vector; " *
+    "give a predicate or picker as its own argument.")
+
 _ispicker(x) = x isa Union{Symbol,AbstractString,AbstractVector,Function,AbstractSelector}
 
 # The verb names the caller in errors.
@@ -164,10 +176,7 @@ _resolve(verb::Symbol, sel::AbstractString, t::Table) = _resolve(verb, Symbol(se
 function _resolve(verb::Symbol, sel::AbstractVector, t::Table)
     out = Symbol[]
     for x in sel
-        x isa Union{Symbol,AbstractString} || _argerror(verb,
-            "a vector of columns holds only names", x,
-            "Put Symbols or Strings in the vector; " *
-            "give a predicate or picker as its own argument.")
+        x isa Union{Symbol,AbstractString} || _notnames(verb, x)
         append!(out, _resolve(verb, Symbol(x), t))
     end
     unique!(out)

@@ -15,13 +15,14 @@ end
 function snapshot(t)
     t = Table(t)
     cols = collect(AbstractVector, getfield(t, :columns))
-    return (copy(getfield(t, :names)), cols, map(copy, cols))
+    return (copy(getfield(t, :names)), cols, map(copy, cols), copy(getfield(t, :lookup)))
 end
 
 function unchanged(t, snap)
     t = Table(t)
-    names, cols, vals = snap
+    names, cols, vals, lookup = snap
     getfield(t, :names) == names || return false
+    getfield(t, :lookup) == lookup || return false
     cur = getfield(t, :columns)
     length(cur) == length(cols) || return false
     return all(i -> cur[i] === cols[i] && isequal(cur[i], vals[i]), eachindex(cols))
