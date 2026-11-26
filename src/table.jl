@@ -147,14 +147,20 @@ function _available(names::Vector{Symbol})::String
         "Available columns: $list."
 end
 
-function _column(t::Table, name::Symbol, verb::Symbol)::AbstractVector
-    i = get(getfield(t, :lookup), name, 0)
-    i == 0 || return getfield(t, :columns)[i]
-    names = getfield(t, :names)
+function _notfound(verb::Symbol, name::Symbol, names::Vector{Symbol})
     near = _suggest(name, names)
     _argerror(verb, "column not found", name,
         near === nothing ? _available(names) : "Did you mean $(repr(near))?")
 end
+
+function _position(t::Table, name::Symbol, verb::Symbol)::Int
+    i = get(getfield(t, :lookup), name, 0)
+    i == 0 && _notfound(verb, name, getfield(t, :names))
+    i
+end
+
+_column(t::Table, name::Symbol, verb::Symbol)::AbstractVector =
+    getfield(t, :columns)[_position(t, name, verb)]
 
 Base.getproperty(t::Table, name::Symbol) = _column(t, name, :getproperty)
 

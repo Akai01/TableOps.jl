@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Column pickers: `everything`, `of_type`, `except`, name predicates,
+  `AbstractSelector` and `resolve`.
 - `Table`: a table type that keeps the column vectors of any Tables.jl table
   (row tables are converted to columns), or builds one from keyword columns.
   Rows with different column names are an error, not a silent drop.

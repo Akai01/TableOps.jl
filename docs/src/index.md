@@ -14,3 +14,13 @@ nrow
 ncol
 glimpse
 ```
+
+## Column pickers
+
+```@docs
+AbstractSelector
+resolve
+everything
+of_type
+except
+```

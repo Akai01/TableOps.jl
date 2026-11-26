@@ -534,7 +534,8 @@ Extension is by adding methods, never by branching on a mode string; keyword
 options only choose among the documented behaviours of a verb.
 
 - **New column picker:** a subtype of `AbstractSelector` with a
-  `resolve(selector, names)` method.
+  `resolve(selector, t)` method that returns the picked names; it may look at
+  the names and the column types of the table `t`.
 - **New window helper:** a function of a whole column, registered the way `lag`
   is so that it runs per group and per series.
 - **New fast reduction:** a `grouped_reduce(::typeof(f), column, groups)` method;
