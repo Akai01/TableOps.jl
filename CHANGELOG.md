@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `each` for elementwise column specifications.
 - Column pickers: `everything`, `of_type`, `except`, name predicates,
   `AbstractSelector` and `resolve`.
 - `Table`: a table type that keeps the column vectors of any Tables.jl table

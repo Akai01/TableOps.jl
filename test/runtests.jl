@@ -7,6 +7,7 @@ import Aqua
     include("test_table.jl")
     include("test_show.jl")
     include("test_selectors.jl")
+    include("test_specs.jl")
     include("test_compat.jl")
 
     @testset "Aqua quality checks" begin

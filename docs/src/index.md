@@ -24,3 +24,9 @@ everything
 of_type
 except
 ```
+
+## Column specifications
+
+```@docs
+each
+```
