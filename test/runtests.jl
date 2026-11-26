@@ -11,6 +11,7 @@ include("checks.jl")
     include("test_selectors.jl")
     include("test_specs.jl")
     include("test_columns.jl")
+    include("test_rows.jl")
     include("test_compat.jl")
 
     @testset "Aqua quality checks" begin
