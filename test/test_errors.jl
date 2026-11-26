@@ -5,7 +5,8 @@ using Test, TableOps
                                  "Did you mean :revenue?") catch e e end
     @test err isa ArgumentError
     @test err.msg == "select: column not found. Got :revenu. Did you mean :revenue?"
-    err = try TableOps._argerror(:Table, "input is not a table", Int64, "Fix.") catch e e end
+    err = try TableOps._argerror(:Table, "input is not a table", Int64, "Fix.")
+          catch e e end
     @test err.msg == "Table: input is not a table. Got Int64. Fix."
     long = try TableOps._argerror(:v, "w", repeat("x", 200), "f") catch e e end
     @test length(long.msg) < 100 && occursin("…", long.msg)
@@ -23,6 +24,9 @@ using Test, TableOps
     @test s(:a, [:b]) === nothing                            # too short to guess
     @test s(:A, [:a]) === :a
     @test s(:zzz, Symbol[]) === nothing
+    @test s(:Ärger, [:ärger, :b]) === :ärger                 # Unicode, case only
+    @test s(Symbol(""), [:a]) === nothing                    # empty name
+    @test (@inferred Union{Symbol,Nothing} TableOps._suggest(:abc, [:abd])) === :abd
     @test s(Symbol("unit prise"), [Symbol("unit price")]) === Symbol("unit price")
     @test @inferred(lev(collect("ab"), collect("ba"))) == 2
 

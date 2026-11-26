@@ -15,6 +15,14 @@ Tables.columnnames(::TupleColumns) = (:a, "b")
 Tables.getcolumn(::TupleColumns, i::Int) = i == 1 ? (1, 2) : [3, 4]
 Tables.getcolumn(x::TupleColumns, n::Symbol) = Tables.getcolumn(x, n === :a ? 1 : 2)
 
+struct MatrixColumn end
+Tables.istable(::Type{MatrixColumn}) = true
+Tables.columnaccess(::Type{MatrixColumn}) = true
+Tables.columns(x::MatrixColumn) = x
+Tables.columnnames(::MatrixColumn) = (:a, :b)
+Tables.getcolumn(::MatrixColumn, i::Int) = i == 1 ? [1, 2] : [1 2; 3 4]
+Tables.getcolumn(x::MatrixColumn, n::Symbol) = Tables.getcolumn(x, n === :a ? 1 : 2)
+
 struct SharedColumns
     v::Vector{Int}
 end
@@ -85,10 +93,12 @@ Tables.getcolumn(x::SharedColumns, ::Symbol) = x.v
         "Table: column a is not a vector. Got 1. Wrap a single value in a vector: a = [1]."
     @test_throws ArgumentError Table(; a = [1, 2, 3], b = [1, 2])
     @test msg(() -> Table(; a = [1, 2, 3], b = [1, 2])) ==
-        "Table: columns have different lengths. Got a has 3 rows, b has 2. Give every column the same number of rows."
+        "Table: columns have different lengths. Got a has 3 rows, b has 2. " *
+        "Give every column the same number of rows."
     @test_throws ArgumentError Table(; a = [1, 2], b = [1, 2], c = [1])
     @test msg(() -> Table(; a = [1, 2], b = [1, 2], c = [1])) ==
-        "Table: columns have different lengths. Got a has 2 rows, c has 1. Give every column the same number of rows."
+        "Table: columns have different lengths. Got a has 2 rows, c has 1. " *
+        "Give every column the same number of rows."
     dup = Tables.table([1 2]; header = [:a, :a])
     @test_throws ArgumentError Table(dup)
     @test msg(() -> Table(dup)) ==
@@ -96,9 +106,11 @@ Tables.getcolumn(x::SharedColumns, ::Symbol) = x.v
     @test_throws ArgumentError Table(; a = ZeroBased(3))
     @test_throws ArgumentError Table((a = ZeroBased(3),))
     @test msg(() -> Table(; a = ZeroBased(3))) ==
-        "Table: column a does not use 1-based indexing. Got (0:2,). Convert it to a 1-based vector, for example with collect."
+        "Table: column a does not use 1-based indexing. Got (0:2,). " *
+        "Convert it to a 1-based vector, for example with collect."
     @test msg(() -> Table((a = ZeroBased(3),))) ==
-        "Table: column a does not use 1-based indexing. Got (0:2,). Convert it to a 1-based vector, for example with collect."
+        "Table: column a does not use 1-based indexing. Got (0:2,). " *
+        "Convert it to a 1-based vector, for example with collect."
 
     # the fix shows the value and a valid Julia name
     @test msg(() -> Table(; a = "x")) ==
@@ -116,6 +128,28 @@ Tables.getcolumn(x::SharedColumns, ::Symbol) = x.v
     @test_throws ArgumentError Table(; a = "x")
     @test_throws ArgumentError Table(; a = (1, 2))
 
+    # Rows with different names are an error, not a silent drop.
+    rowmsg = "Table: rows have different column names. Got "
+    fix = ". Give every row the same names; use missing for a value that is absent."
+    @test msg(() -> Table([(a = 1,), (a = 2, b = 3)])) ==
+        rowmsg * "row 1 has a, row 2 has a, b" * fix
+    @test msg(() -> Table([(a = 1, b = 2), (a = 2,)])) ==
+        rowmsg * "row 1 has a, b, row 2 has a" * fix
+    @test msg(() -> Table([(a = 1, b = 2), (a = 2, b = 3), (a = 3, c = 4)])) ==
+        rowmsg * "row 1 has a, b, row 3 has a, c" * fix
+    ro = Table([(a = 1, b = 2), (b = 3, a = 4)])             # reordered names
+    @test getfield(ro, :names) == [:a, :b]
+    @test getfield(ro, :columns)[1] == [1, 4] && getfield(ro, :columns)[2] == [2, 3]
+    rc = Table([(a = 1, b = 2), (a = 3, b = 4)])             # schema known
+    @test getfield(rc, :columns)[1] == [1, 3]
+    @test getfield(Table(NamedTuple{(:a,),Tuple{Int}}[]), :names) == [:a]
+
+    # a collected column must be a vector
+    @test_throws ArgumentError Table(MatrixColumn())
+    @test msg(() -> Table(MatrixColumn())) ==
+        "Table: column b is not a vector. Got Matrix{Int64}. " *
+        "Give a one-dimensional column."
+
     @test getfield(Table(NamedTuple()), :names) == Symbol[]
     @test getfield(Table(NamedTuple()), :columns) == AbstractVector[]
     ux = Table((var"unit price" = [1.0], 名前 = ["x"]))
@@ -130,6 +164,11 @@ Tables.getcolumn(x::SharedColumns, ::Symbol) = x.v
     @test !TableOps._istable(1) && !TableOps._istable([1, 2])
     @test TableOps._table(t) === t
     @test TableOps._table((a = [1],)) isa Table
+    @test startswith(msg(() -> TableOps._table(1, :select)),
+        "select: input is not a Tables.jl table. Got Int64.")
+    @test startswith(msg(() -> TableOps._table(1)),
+        "Table: input is not a Tables.jl table. Got Int64.")
+    @test TableOps._table(t, :select) === t
 
     n = TableOps._newtable([:x, :y], AbstractVector[[1], [2]])
     @test n isa Table && getfield(n, :lookup) == Dict(:x => 1, :y => 2)

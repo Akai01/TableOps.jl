@@ -214,6 +214,9 @@ end
         " date     Int64     1, 2, 1",
         " revenue  Float64?  10.0, missing, 5.0"], "\n") * "\n"
     @test glimpse(devnull, (a = [1],)) === nothing
+    err = try glimpse(devnull, 1) catch e e end
+    @test err isa ArgumentError
+    @test startswith(err.msg, "glimpse: input is not a Tables.jl table. Got Int64.")
     @test glimpse_str((a = [1, 2],)) == "2×1 Table\n a  Int64  1, 2\n"
     @test glimpse_str(Table()) == "0×0 Table\n"
     @test glimpse_str(Table(; a = Int[])) == "0×1 Table\n a  Int64\n"

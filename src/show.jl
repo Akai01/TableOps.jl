@@ -189,7 +189,7 @@ julia> glimpse(Table(; a = [1, 2, 3], b = ["x", "y", "z"]))
 function glimpse end
 
 function glimpse(io::IO, x)
-    t = _table(x)
+    t = _table(x, :glimpse)
     println(io, _title(t))
     nms = getfield(t, :names)
     isempty(nms) && return nothing

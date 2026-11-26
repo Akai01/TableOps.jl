@@ -75,17 +75,38 @@ function _checkcolumns(names::Vector{Symbol}, columns::Vector{AbstractVector})
     end
 end
 
-function Table(x)
-    Tables.istable(x) || _argerror(:Table, "input is not a Tables.jl table", typeof(x),
+function _notatable(verb::Symbol, x)
+    _argerror(verb, "input is not a Tables.jl table", typeof(x),
         "Pass a NamedTuple of vectors, a vector of NamedTuples or another " *
         "Tables.jl table; collect a generator first: Table(collect(x)).")
+end
+
+function _samerownames(rows::AbstractVector)
+    isempty(rows) && return nothing
+    base = Tables.columnnames(rows[1])
+    for i in 2:length(rows)
+        names = Tables.columnnames(rows[i])
+        (names == base || issetequal(names, base)) && continue
+        _argerror(:Table, "rows have different column names",
+            Text("row 1 has $(join(base, ", ")), row $i has $(join(names, ", "))"),
+            "Give every row the same names; use missing for a value that is absent.")
+    end
+end
+
+function Table(x)
+    Tables.istable(x) || _notatable(:Table, x)
+    x isa AbstractVector && !Tables.columnaccess(x) && Tables.schema(x) === nothing &&
+        _samerownames(x)
     cols = Tables.columns(x)
     raw = collect(Tables.columnnames(cols))
     names = Symbol[Symbol(n) for n in raw]
     columns = AbstractVector[]
     for i in eachindex(raw)
         col = Tables.getcolumn(cols, i)
-        push!(columns, col isa AbstractVector ? col : collect(col))
+        col isa AbstractVector || (col = collect(col))
+        col isa AbstractVector || _argerror(:Table, "column $(names[i]) is not a vector",
+            typeof(col), "Give a one-dimensional column.")
+        push!(columns, col)
     end
     _checkcolumns(names, columns)
     _newtable(names, columns)
@@ -113,8 +134,11 @@ end
 
 _istable(x) = x isa AbstractTable || Tables.istable(x)
 
-_table(x::AbstractTable) = x
-_table(x) = Table(x)
+_table(x::AbstractTable, verb::Symbol = :Table) = x
+function _table(x, verb::Symbol = :Table)
+    Tables.istable(x) || _notatable(verb, x)
+    Table(x)
+end
 
 function _available(names::Vector{Symbol})::String
     isempty(names) && return "The table has no columns."

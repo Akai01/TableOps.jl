@@ -5,11 +5,18 @@ import Tables, CSV, Arrow, DataFrames
 
     @test isequal(Table(Tables.columntable(t)), t)
     @test isequal(Table(Tables.rowtable(t)), t)
+    eltypes(x) = Type[eltype(col) for col in getfield(x, :columns)]
+    want = Type[Int, String, Union{Missing,Float64}]
+    @test eltypes(Table(Tables.columntable(t))) == want
+    @test eltypes(Table(Tables.rowtable(t))) == want
 
     c = Table(CSV.File(IOBuffer("id,name\n1,a\n2,b\n")))
     @test names(c) == [:id, :name] && c.id == [1, 2] && c.name == ["a", "b"]
     b = IOBuffer(); CSV.write(b, t)
-    @test isequal(Table(CSV.File(IOBuffer(take!(b)))).x, t.x)
+    tc = Table(CSV.File(IOBuffer(take!(b))))
+    @test isequal(tc, t)                       # CSV strings are its own vector type
+    @test eltype(tc.id) == Int && eltype(tc.x) == Union{Missing,Float64}
+    @test eltype(tc.name) <: AbstractString
 
     a = IOBuffer(); Arrow.write(a, t); seekstart(a)
     ta = Table(Arrow.Table(a))
@@ -17,6 +24,7 @@ import Tables, CSV, Arrow, DataFrames
 
     df = DataFrames.DataFrame(t)
     @test isequal(Table(df), t)
+    @test eltypes(Table(df)) == want
     @test getfield(Table(df), :columns)[1] === df.id
     @test isequal(DataFrames.DataFrame(Table(df)), df)
 

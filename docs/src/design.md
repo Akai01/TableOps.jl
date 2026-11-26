@@ -124,7 +124,9 @@ set of columns does not trigger new compilation (see [Performance](#Performance)
   uses `getfield`, so a column named `names` or `columns` is fine).
   `names(t)` returns a `Vector{Symbol}` *(own choice, as Tables.jl)*;
   `nrow(t)` and `ncol(t)` give the size.
-- `copy(t)` copies every column, giving a fully independent table.
+- `copy(t)` copies every column, so changing a column of the copy leaves `t`
+  unchanged. The copy is shallow: mutable values inside cells (a vector in a
+  cell, say) are shared.
 - `Table` implements the Tables.jl column interface (`Tables.istable`,
   `Tables.columnaccess`, `Tables.columns`, `Tables.getcolumn`,
   `Tables.columnnames`, `Tables.schema`).
@@ -370,7 +372,8 @@ Every verb has a documented, deterministic output order.
 Verbs never modify their input. Unchanged columns are shared with the input
 rather than copied (`select` copies nothing; `mutate` creates only the new
 columns). Consequence, documented: changing a source vector in place afterwards
-also changes the table; `copy(t)` gives an independent table.
+also changes the table; `copy(t)` gives a table whose columns are independent of
+the source (a shallow copy; see Core types).
 
 ### Randomness
 
