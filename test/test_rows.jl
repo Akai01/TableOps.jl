@@ -351,3 +351,159 @@ end
     @test TableOps._sortpass(mi, [1, 2, 3], true) == [1, 3, 2]
     @test TableOps._sortpass([2, 2, 1], [2, 1, 3], false) == [3, 2, 1]
 end
+
+@testset "distinct" begin
+    um = Union{Missing,Int}
+    d = Table(; a = [1, 2, 1, 2, 1], b = ["x", "y", "x", "z", "x"], c = [1, 2, 3, 4, 5])
+    r = check_forms_agree(distinct, d, :a, :b)
+    @test same_table(r, Table(; a = [1, 2, 2], b = ["x", "y", "z"]))
+    @test same_table(distinct(d, :a, :b; keep_all = true),
+        Table(; a = [1, 2, 2], b = ["x", "y", "z"], c = [1, 2, 4]))
+    @test same_table(distinct(d, :b, :a), Table(; b = ["x", "y", "z"], a = [1, 2, 2]))
+    @test same_table(distinct(d, :a), Table(; a = [1, 2]))
+    @test same_table(distinct(d, :a, :a), Table(; a = [1, 2]))
+    @test same_table(distinct(d, :a; keep_all = true),
+        Table(; a = [1, 2], b = ["x", "y"], c = [1, 2]))
+    @test same_table(distinct(d), d) && rc(distinct(d))[1] !== rc(d)[1]
+    @test rn(distinct(d)) !== rn(d)
+    @test same_table(distinct(d; keep_all = true), d)
+    @test same_table(distinct(d, startswith("a")), Table(; a = [1, 2]))
+    @test same_table(distinct(d, ["b", "a"]), distinct(d, :b, :a))
+    @test same_table(distinct(d, except(:c)), distinct(d, :a, :b))
+    @test same_table(distinct(d, of_type(String)), Table(; b = ["x", "y", "z"]))
+    # missing is one value, NaN equals NaN, -0.0 equals 0.0
+    @test same_table(distinct(Table(; x = um[missing, 1, missing, 1])),
+        Table(; x = um[missing, 1]))
+    @test same_table(distinct(Table(; x = [NaN, NaN, 1.0, NaN])), Table(; x = [NaN, 1.0]))
+    z = distinct(Table(; x = [0.0, -0.0, 0.0]))
+    @test z.x == [0.0] && !signbit(z.x[1])
+    z = distinct(Table(; x = [-0.0, 0.0]))
+    @test z.x == [0.0] && signbit(z.x[1])
+    z = distinct(Table(; x = Float32[-0.0, 0.0, 1.0]))
+    @test z.x == Float32[0.0, 1.0] && z.x isa Vector{Float32} && signbit(z.x[1])
+    z = distinct(Table(; x = Union{Missing,Float64}[0.0, -0.0, missing, -0.0]))
+    @test isequal(z.x, Union{Missing,Float64}[0.0, missing]) && !signbit(z.x[1])
+    z = distinct(Table(; x = Any[-0.0, 0.0, 0.0f0, 1, 1.0, missing, missing]))
+    @test isequal(z.x, Any[-0.0, 1, missing]) && z.x isa Vector{Any} && signbit(z.x[1])
+    z = distinct(Table(; x = [-0.0, 0.0, 1.0], y = [1, 1, 2]))
+    @test z.x == [0.0, 1.0] && signbit(z.x[1]) && z.y == [1, 2]
+    z = distinct(Table(; x = [0.0, -0.0, 1.0], y = [1, 1, 2]), :y; keep_all = true)
+    @test z.x == [0.0, 1.0] && !signbit(z.x[1])
+    @test same_table(distinct(Table(; x = [NaN, -NaN, NaN, Inf, -Inf, Inf])),
+        Table(; x = [NaN, Inf, -Inf]))
+    @test same_table(distinct(Table(; x = [missing, missing], y = [1, 1])),
+        Table(; x = Missing[missing], y = [1]))
+    @test same_table(distinct(Table(; x = um[missing, missing, missing], y = [1, 1, 2])),
+        Table(; x = um[missing, missing], y = [1, 2]))
+    @test same_table(distinct(Table(; x = [missing, missing])), Table(; x = [missing]))
+    # strings, Unicode and space names, edge sizes
+    u = Table(; var"unit price" = [1.0, 1.0, 2.0], 名前 = ["x", "x", "y"])
+    @test same_table(distinct(u),
+        Table(; var"unit price" = [1.0, 2.0], 名前 = ["x", "y"]))
+    @test same_table(distinct(u, "名前"), Table(; 名前 = ["x", "y"]))
+    z0 = Table(; a = Int[], s = String[])
+    @test same_table(distinct(z0), z0)
+    @test same_table(distinct(z0, :s), Table(; s = String[]))
+    @test same_table(distinct(Table()), Table())
+    e = Table()
+    @test distinct(e) !== e && same_table(distinct(e), Table())
+    @test distinct(e; keep_all = true) !== e && ncol(distinct(e; keep_all = true)) == 0
+    @test msg(() -> distinct(e, :a)) ==
+        "distinct: column not found. Got :a. The table has no columns."
+    @test msg(() -> distinct(e, startswith("a"))) ==
+        "distinct: no columns picked. Got an empty selection. Name at least one " *
+        "column, or call distinct(t) for all of them."
+    @test same_table(distinct(d, :c, :a; keep_all = true),
+        Table(; a = [1, 2, 1, 2, 1], b = ["x", "y", "x", "z", "x"], c = [1, 2, 3, 4, 5]))
+    @test same_table(distinct(d, :b, :a; keep_all = true),
+        Table(; a = [1, 2, 2], b = ["x", "y", "z"], c = [1, 2, 4]))
+    @test same_table(distinct(Table(; a = [1])), Table(; a = [1]))
+    # forms, input, types, pipe
+    check_input_unchanged(x -> distinct(x, :a), d)
+    check_input_unchanged(x -> distinct(x, :a; keep_all = true), d)
+    check_concrete_eltypes(distinct(d, :a, :b))
+    @test same_table(d |> distinct(:a), distinct(d, :a))
+    @test same_table(distinct(:a; keep_all = true)(d), distinct(d, :a; keep_all = true))
+    @test same_table(distinct()(d), distinct(d)) && distinct(; keep_all = true) isa Function
+    @test same_table(distinct((a = [1, 1],)), Table(; a = [1]))
+    @test @inferred(TableOps._codes([5, 6, 5])) == ([1, 2, 1], 2)
+    @test @inferred(TableOps._codes(["a", "b", "a"])) == ([1, 2, 1], 2)
+    @test TableOps._codes(Union{Missing,Float64}[NaN, missing, NaN, -0.0, 0.0]) ==
+        ([1, 2, 1, 3, 3], 3)
+    @test @inferred(TableOps._codes(Union{Missing,Float64}[NaN, missing, NaN])) ==
+        ([1, 2, 1], 2)
+    @test @inferred(TableOps._codes(Float32[-0.0, 0.0, 1.0])) == ([1, 1, 2], 2)
+    @test @inferred(TableOps._codes(Any[-0.0, 0.0, missing, 1, 1.0])) ==
+        ([1, 1, 2, 3, 3], 3)
+    @test TableOps._codes(Int[]) == (Int[], 0)
+    @test TableOps._codes([missing, missing]) == ([1, 1], 1)
+    @test @inferred(TableOps._combine([1, 2, 1], [1, 1, 2], 2)) == ([1, 2, 3], 3)
+    @test TableOps._combine([1, 1, 2, 2], [1, 1, 1, 1], 1) == ([1, 1, 2, 2], 2)
+    # the pairs (1, 23) and (12, 3) must stay apart
+    @test @inferred(TableOps._combine([1, 12, 1, 12], [23, 3, 23, 3], 23)) ==
+        ([1, 2, 1, 2], 2)
+    @test TableOps._combine([1, 2, 1], [1, 2, 3], 3) == ([1, 2, 3], 3)
+    @test TableOps._combine([2, 1, 2], [1, 3, 1], 3) == ([1, 2, 1], 2)
+    @test @inferred(TableOps._firstrows(AbstractVector[[1, 1, 2], ["a", "a", "b"]])) ==
+        [1, 3]
+    @test @inferred(TableOps._firstrows(AbstractVector[Int[]])) == Int[]
+    # errors
+    @test msg(() -> distinct(d, startswith("zz"))) ==
+        "distinct: no columns picked. Got an empty selection. Name at least one " *
+        "column, or call distinct(t) for all of them."
+    @test msg(() -> distinct(d, except(:a, :b, :c))) ==
+        msg(() -> distinct(d, startswith("zz")))
+    @test msg(() -> distinct(d, :zz)) ==
+        "distinct: column not found. Got :zz. Available columns: :a, :b, :c."
+    @test msg(() -> distinct(Table(; revenue = [1]), :revenu)) ==
+        "distinct: column not found. Got :revenu. Did you mean :revenue?"
+    flagmsg = "distinct: keep_all must be true or false. Got 1. " *
+        "Write keep_all = true or keep_all = false."
+    @test msg(() -> distinct(d; keep_all = 1)) == flagmsg
+    @test msg(() -> distinct(:a; keep_all = 1)) == flagmsg
+    @test msg(() -> distinct(; keep_all = 1)) == flagmsg
+    @test msg(() -> distinct(d, :a; keep_all = 1)) == flagmsg
+    notpicker(x) = "distinct: not a column picker. Got $x. Use a name, a vector of " *
+        "names, a predicate such as startswith(\"a\") or contains(r\"^q\"), " *
+        "everything(), of_type(T) or except(...)."
+    @test msg(() -> distinct(d, 5)) == notpicker(5)
+    @test msg(() -> distinct(:a, 5)) == notpicker(5)
+    firstarg = "distinct: the first argument is neither a table nor a column picker. " *
+        "Got 5. Pass a table, or pickers such as distinct(:a, :b) for the pipe form."
+    @test msg(() -> distinct(5)) == firstarg
+    @test msg(() -> distinct(5, :a)) == firstarg
+end
+
+@testset "distinct on random tables" begin
+    # reference: a loop and a Dict on tuples, -0.0 mapped to 0.0
+    rz(x) = x isa AbstractFloat && x == 0 ? zero(x) : x
+    function ref_distinct(cols)
+        seen = Dict{Any,Bool}(); rows = Int[]
+        for i in 1:length(cols[1])
+            key = Tuple(rz(c[i]) for c in cols)
+            haskey(seen, key) || (seen[key] = true; push!(rows, i))
+        end
+        rows
+    end
+    rng = StableRNG(21); n = 600
+    pool = Union{Missing,Float64}[-0.0, 0.0, 1.0, NaN, missing]
+    cols = AbstractVector[rint(rng, n, 5), [pool[Base.rand(rng, 1:5)] for _ in 1:n],
+        [["a", "b", "c"][Base.rand(rng, 1:3)] for _ in 1:n],
+        Union{Missing,Int}[Base.rand(rng) < 0.3 ? missing : Base.rand(rng, 1:2)
+                           for _ in 1:n],
+        Float32[[-0.0f0, 0.0f0, 2.0f0][Base.rand(rng, 1:3)] for _ in 1:n],
+        Any[[-0.0, 0.0, missing, NaN, 1][Base.rand(rng, 1:5)] for _ in 1:n]]
+    for sel in ([1], [2], [3], [4], [5], [6], [1, 2], [2, 3, 4], [1, 2, 3, 4], [5, 6],
+                [1, 2, 3, 4, 5, 6])
+        @test TableOps._firstrows(cols[sel]) == ref_distinct(cols[sel])
+    end
+    big = rint(rng, 20_000, 50_000)
+    @test TableOps._firstrows(AbstractVector[big]) == ref_distinct([big])
+    d = Table(; k1 = cols[1], k2 = cols[2], k3 = cols[3], k4 = cols[4], id = collect(1:n))
+    for ks in ([:k1], [:k2], [:k3, :k4], [:k1, :k2, :k3])
+        rows = ref_distinct([getproperty(d, k) for k in ks])
+        @test distinct(d, ks...; keep_all = true).id == rows
+        @test same_table(distinct(d, ks...),
+            Table(; (k => getproperty(d, k)[rows] for k in ks)...))
+    end
+end

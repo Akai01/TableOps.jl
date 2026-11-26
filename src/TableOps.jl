@@ -1,7 +1,7 @@
 """
     TableOps
 
-Fast, tidyverse-style table verbs for any Tables.jl table.
+Fast, tidyverse- and SQL-style table verbs for any Tables.jl table.
 """
 module TableOps
 
@@ -11,7 +11,7 @@ export Table, as_table, nrow, ncol, glimpse
 export AbstractSelector, resolve, everything, of_type, except
 export each
 export select, rename, relocate, pull, mutate
-export where, arrange, desc
+export where, arrange, desc, distinct
 
 include("errors.jl")
 include("table.jl")

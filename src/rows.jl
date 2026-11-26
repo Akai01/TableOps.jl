@@ -241,3 +241,88 @@ function _sortpass(col::AbstractVector{T}, p::Vector{Int}, rev::Bool) where {T}
     vals = collect(skipmissing(g))
     vcat(p[present[sortperm(vals; rev)]], p[findall(ismissing, g)])
 end
+
+"""
+    distinct(t, picks...; keep_all = false)
+    distinct(picks...; keep_all = false)
+
+Keep the first row of each distinct key, in the original order. The key is
+the columns that `picks` pick (any column picker, see [`resolve`](@ref)); with
+no picks it is every column. The result has the picked columns in pick order;
+with `keep_all = true` it has every column of `t`, taken from the first row
+of each key.
+
+Keys are equal when they are `isequal` (so `missing` is one value and `NaN`
+equals `NaN`), with one addition: `-0.0` equals `0.0`, and the value of the
+first row is kept. A pick that picks no column is an error, because a table without
+columns has no rows. The result never shares columns with the input.
+
+# Examples
+```jldoctest
+julia> using TableOps
+
+julia> d = Table(; a = [1, 2, 1], b = ["x", "y", "x"]);
+
+julia> pull(distinct(d, :a), :a)
+2-element Vector{Int64}:
+ 1
+ 2
+
+julia> nrow(d |> distinct())
+2
+```
+"""
+function distinct(x, rest...; keep_all = false)
+    k = _checkflag(:distinct, :keep_all, keep_all)
+    _istable(x) && return _distinct(_table(x, :distinct), rest, k)
+    picks = _pickers(:distinct, x, rest, "pickers such as distinct(:a, :b)")
+    t -> _distinct(_table(t, :distinct), picks, k)
+end
+
+function distinct(; keep_all = false)
+    k = _checkflag(:distinct, :keep_all, keep_all)
+    t -> _distinct(_table(t, :distinct), (), k)
+end
+
+function _distinct(t::Table, picks::Tuple, keep_all::Bool)::Table
+    isempty(picks) && ncol(t) == 0 && return _take(t, Int[])
+    names = isempty(picks) ? getfield(t, :names) : _pickall(:distinct, picks, t)
+    isempty(names) && _argerror(:distinct, "no columns picked", Text("an empty selection"),
+        "Name at least one column, or call distinct(t) for all of them.")
+    kcols = AbstractVector[_column(t, n, :distinct) for n in names]
+    _take(keep_all ? t : _newtable(copy(names), kcols), _firstrows(kcols))
+end
+
+# Codes by first appearance; -0.0 and 0.0 are one key.
+function _codes(col::AbstractVector{T}) where {T}
+    d = Dict{T,Int}()
+    codes = Vector{Int}(undef, length(col))
+    for i in eachindex(col)
+        codes[i] = get!(d, _nz(col[i]), length(d) + 1)
+    end
+    codes, length(d)
+end
+
+function _combine(a::Vector{Int}, b::Vector{Int}, nb::Int)
+    d = Dict{Int,Int}()
+    out = similar(a)
+    for i in eachindex(a)
+        out[i] = get!(d, (a[i] - 1) * nb + b[i], length(d) + 1)
+    end
+    out, length(d)
+end
+
+# Phase 4 replaces the body by encode_keys(cols).
+function _firstrows(cols::Vector{AbstractVector})
+    codes, k = _codes(cols[1])
+    for j in 2:length(cols)
+        c, nc = _codes(cols[j])
+        codes, k = _combine(codes, c, nc)
+    end
+    rows = Vector{Int}(undef, k)
+    seen = 0
+    for i in eachindex(codes)
+        codes[i] > seen && (seen += 1; rows[seen] = i)
+    end
+    rows
+end

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `distinct`: the first row of each distinct key, in order; `missing` is one
+  value, `NaN` equals `NaN` and `-0.0` equals `0.0`.
 - `arrange` and `desc`: a stable sort by several keys; `missing` last in
   both directions, `NaN` after `Inf`, `-0.0` and `0.0` tie.
 - `where`: keeps the rows where every condition is `true` (`false` and
