@@ -14,5 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Column access with `t.col`, `names`, `copy`, `isequal`, `==` and the Tables.jl
   interface for `Table`.
 - `as_table`, `nrow` and `ncol`.
+- Table printing (size, column names and types, first and last rows) and
+  `glimpse` (one line per column).
 - Package skeleton: module, test suite with Aqua.jl, documentation with the
   design, CI on Julia 1.10 and the latest release.

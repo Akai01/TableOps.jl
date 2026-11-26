@@ -30,9 +30,19 @@ fix it.
 ```jldoctest
 julia> using TableOps
 
-julia> Table(; a = [1, 2], b = ["x", "y"]) isa Table
-true
+julia> Table(; a = [1, 2], b = ["x", "y"])
+2×2 Table
+     a  b
+ Int64  String
+ ─────────────
+     1  x
+     2  y
 ```
+
+A `Table` prints its size, the column names and types and the first and
+last rows, fitted to the display; `glimpse` shows one line per column.
+In the REPL, rows and columns are fitted to the screen; written elsewhere, all
+rows and columns are shown.
 """
 struct Table <: AbstractTable
     names::Vector{Symbol}

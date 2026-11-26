@@ -12,4 +12,5 @@ Table
 as_table
 nrow
 ncol
+glimpse
 ```

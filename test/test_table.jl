@@ -63,7 +63,7 @@ Tables.getcolumn(x::SharedColumns, ::Symbol) = x.v
     nan = Table(; a = [NaN, 1.0])
     @test isnan(getfield(nan, :columns)[1][1])
 
-    # non-vector source columns are collected; names become Symbols
+    # Non-vector columns are collected; names become Symbols.
     c = Table(TupleColumns())
     @test getfield(c, :names) == [:a, :b]
     @test getfield(c, :columns)[1] == [1, 2]
