@@ -1,5 +1,5 @@
 using Test, TableOps
-msg(f) = try f(); nothing catch e e isa ArgumentError ? e.msg : rethrow() end
+isdefined(@__MODULE__, :same_table) || include("checks.jl")
 
 @testset "specs" begin
     S = TableOps._specs

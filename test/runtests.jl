@@ -2,12 +2,15 @@ using Test
 using TableOps
 import Aqua
 
+include("checks.jl")
+
 @testset "TableOps" begin
     include("test_errors.jl")
     include("test_table.jl")
     include("test_show.jl")
     include("test_selectors.jl")
     include("test_specs.jl")
+    include("test_columns.jl")
     include("test_compat.jl")
 
     @testset "Aqua quality checks" begin

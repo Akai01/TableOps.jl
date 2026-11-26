@@ -1,4 +1,5 @@
 using Test, TableOps
+isdefined(@__MODULE__, :same_table) || include("checks.jl")
 
 struct LastName <: AbstractSelector end
 struct Unannotated <: AbstractSelector end
@@ -10,7 +11,6 @@ struct SameNames <: AbstractSelector end
 TableOps.resolve(::SameNames, t::Table) = getfield(t, :names)
 TableOps.resolve(::LastName, t::Table) = [last(names(t))]
 
-msg(f) = try f(); nothing catch e e isa ArgumentError ? e.msg : rethrow() end
 mk(nm) = Table(; (n => [1] for n in nm)...)                  # one row, Int columns
 
 @testset "exports do not clash with Base" begin
