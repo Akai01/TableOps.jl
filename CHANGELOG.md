@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `where`: keeps the rows where every condition is `true` (`false` and
+  `missing` are dropped); a condition that is not `Bool` or `missing` is an
+  error. `where` accepts a function of the table as a condition; an empty
+  column name in a specification is an error.
 - `mutate` for ungrouped tables: columns from `name = :col`, `:col => f`,
   `[:a, :b] => f`, `name = value` and `name = t -> …`. A tuple, `NamedTuple`,
   matrix, set, dictionary, table, generator, `skipmissing`, `keys`, `values` or

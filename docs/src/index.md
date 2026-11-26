@@ -40,3 +40,9 @@ relocate
 pull
 mutate
 ```
+
+## Row verbs
+
+```@docs
+TableOps.where
+```

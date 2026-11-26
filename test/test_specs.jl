@@ -39,8 +39,9 @@ isdefined(@__MODULE__, :same_table) || include("checks.jl")
     @test msg(() -> S(:mutate, (:a,), (;))) ==
         "mutate: a column specification needs a name. Got :a. Write name = :a."
     @test msg(() -> S(:where, (5,), (;); allow_unnamed = true)) ==
-        "where: not a valid column specification. Got 5. Use :col, :col => f, " *
-        "[:a, :b] => f, :col => each(f), name = :col, name = value or name = t -> …."
+        "where: not a valid condition. Got 5. Use :flag (a Bool column), " *
+        ":col => f, [:a, :b] => f, :col => each(f) or a function of the table " *
+        "such as t -> t.x .> 1."
     @test msg(() -> S(:mutate, (5,), (;))) ==
         "mutate: not a valid column specification. Got 5. Use :col, :col => f, " *
         "[:a, :b] => f, :col => each(f), name = :col, name = value or name = t -> …."
@@ -136,4 +137,18 @@ end
     @test run1((; c = t -> nrow(t)), t0) == 0
     @test msg(() -> run1((; c = :zz => sum), t)) ==
         "mutate: column not found. Got :zz. Available columns: :a, :b."
+end
+
+@testset "specs for where (Phase 3)" begin
+    S = TableOps._specs
+    f = S(:where, (tt -> tt.a .> 1, :a => each(>(1))), (;); allow_unnamed = true)
+    @test f[1].inputs == Symbol[] && f[1].f isa Function && f[1].name == Symbol("")
+    # mutate keeps the column wording, rejects a function
+    @test msg(() -> S(:mutate, (sum,), (;))) ==
+        "mutate: not a valid column specification. Got sum. Use :col, :col => f, " *
+        "[:a, :b] => f, :col => each(f), name = :col, name = value or name = t -> …."
+    empty = NamedTuple{(Symbol(""),)}((1,))
+    gave = "a column name cannot be empty. Got Symbol(\"\"). Give the column a name."
+    @test msg(() -> S(:mutate, (), empty)) == "mutate: " * gave
+    @test msg(() -> S(:where, (), empty)) == "where: " * gave
 end

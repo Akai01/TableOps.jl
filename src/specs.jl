@@ -37,18 +37,25 @@ each(x) = _argerror(:each, "needs a function", x,
 
 _ispositional(x) = x isa Union{Symbol,Pair,Each}
 
+const _SPEC_SHAPES = "Use :col, :col => f, [:a, :b] => f, :col => each(f), " *
+    "name = :col, name = value or name = t -> …."
+const _CONDITION_SHAPES = "Use :flag (a Bool column), :col => f, [:a, :b] => f, " *
+    ":col => each(f) or a function of the table such as t -> t.x .> 1."
+
 function _specs(verb::Symbol, args::Tuple, kwargs; allow_unnamed::Bool = false)
     out = ColSpec[]
     for x in args
-        _ispositional(x) || _argerror(verb, "not a valid column specification", x,
-            "Use :col, :col => f, [:a, :b] => f, :col => each(f), name = :col, " *
-            "name = value or name = t -> ….")
+        (_ispositional(x) || (allow_unnamed && x isa Function)) || _argerror(verb,
+            allow_unnamed ? "not a valid condition" : "not a valid column specification",
+            x, allow_unnamed ? _CONDITION_SHAPES : _SPEC_SHAPES)
         s = _spec(verb, Symbol(""), x)
         allow_unnamed || _argerror(verb, "a column specification needs a name", x,
             "Write name = $(_fmt_value(x)).")
         push!(out, s)
     end
     for (name, x) in pairs(kwargs)
+        name === Symbol("") && _argerror(verb, "a column name cannot be empty", name,
+            "Give the column a name.")
         push!(out, _spec(verb, name, x))
     end
     out
