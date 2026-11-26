@@ -228,7 +228,7 @@ function _checksortable(verb::Symbol, name::Symbol, col::AbstractVector)
 end
 
 _nz(x) = x
-_nz(x::AbstractFloat) = x + zero(x)
+_nz(x::AbstractFloat) = iszero(x) ? zero(x) : x
 _sortkey(col::AbstractVector) = col
 _sortkey(col::AbstractVector{<:Union{Missing,AbstractFloat}}) = map(_nz, col)
 

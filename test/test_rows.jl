@@ -239,6 +239,12 @@ end
     @test signbit.(arrange(z, :x, :y).x) == [true, false, true, false]
     zm = Table(; x = Union{Missing,Float64}[0.0, -0.0, missing], y = [2, 1, 0])
     @test arrange(zm, :x, :y).y == [1, 2, 0]
+    # BigFloats that differ only beyond the default precision
+    ba, bb = setprecision(BigFloat, 512) do
+        big(1), big(1) + big(2)^-300
+    end
+    @test isequal(arrange(Table(; x = [bb, ba]), :x).x, [ba, bb])
+    @test isequal(arrange(Table(; x = [ba, bb]), desc(:x)).x, [bb, ba])
     # strings sort by code point, not locale
     ws = ["b", "B", "a", "ä", "10", "2"]
     @test arrange(Table(; s = ws), :s).s == ["10", "2", "B", "a", "b", "ä"]
@@ -385,6 +391,7 @@ end
     @test isequal(z.x, Union{Missing,Float64}[0.0, missing]) && !signbit(z.x[1])
     z = distinct(Table(; x = Any[-0.0, 0.0, 0.0f0, 1, 1.0, missing, missing]))
     @test isequal(z.x, Any[-0.0, 1, missing]) && z.x isa Vector{Any} && signbit(z.x[1])
+    @test z.x[2] isa Int
     z = distinct(Table(; x = [-0.0, 0.0, 1.0], y = [1, 1, 2]))
     @test z.x == [0.0, 1.0] && signbit(z.x[1]) && z.y == [1, 2]
     z = distinct(Table(; x = [0.0, -0.0, 1.0], y = [1, 1, 2]), :y; keep_all = true)
@@ -396,6 +403,15 @@ end
     @test same_table(distinct(Table(; x = um[missing, missing, missing], y = [1, 1, 2])),
         Table(; x = um[missing, missing], y = [1, 2]))
     @test same_table(distinct(Table(; x = [missing, missing])), Table(; x = [missing]))
+    # BigFloats that differ only beyond the default precision
+    ba, bb = setprecision(BigFloat, 512) do
+        big(1), big(1) + big(2)^-300
+    end
+    @test ba != bb && precision(BigFloat) < 512
+    zb = distinct(Table(; x = [ba, bb, ba]))
+    @test nrow(zb) == 2 && isequal(zb.x, [ba, bb])
+    @test nrow(distinct(Table(; x = [big(-0.0), big(0.0)]))) == 1
+    @test !signbit(distinct(Table(; x = [big(0.0), big(-0.0)])).x[1])
     # strings, Unicode and space names, edge sizes
     u = Table(; var"unit price" = [1.0, 1.0, 2.0], 名前 = ["x", "x", "y"])
     @test same_table(distinct(u),
