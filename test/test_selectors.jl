@@ -1,6 +1,11 @@
 using Test, TableOps
 
 struct LastName <: AbstractSelector end
+struct Unannotated <: AbstractSelector end
+struct NoMethod <: AbstractSelector end
+struct Fixed <: AbstractSelector; v::Vector{Symbol} end
+TableOps.resolve(::Unannotated, t) = [:a]
+TableOps.resolve(s::Fixed, t::Table) = s.v
 struct SameNames <: AbstractSelector end
 TableOps.resolve(::SameNames, t::Table) = getfield(t, :names)
 TableOps.resolve(::LastName, t::Table) = [last(names(t))]
@@ -91,19 +96,46 @@ end
         "of_type: needs a type. Got 1. Write of_type(Int) or of_type(Real)."
     @test msg(() -> TableOps._resolve(:select, 5, t)) ==
         "select: not a column picker. Got 5. " *
-        "Use a name, a vector of names, a predicate such as startswith(\"a\"), " *
-        "everything(), of_type(T) or except(...)."
+        "Use a name, a vector of names, a predicate such as startswith(\"a\") " *
+        "or contains(r\"^q\"), everything(), of_type(T) or except(...)."
     @test msg(() -> TableOps._resolve(:select, r"^q", t)) ==          # Regex alone
         "select: not a column picker. Got r\"^q\". Use a name, a vector of names, " *
-        "a predicate such as startswith(\"a\"), everything(), of_type(T) or except(...)."
+        "a predicate such as startswith(\"a\") or contains(r\"^q\"), " *
+        "everything(), of_type(T) or except(...)."
     @test msg(() -> TableOps._resolve(:select, except(:zz), t)) ==     # verb reaches except
         "select: column not found. Got :zz. " *
         "Available columns: :revenue, :region, :cost, :q1, :q5, :Q2."
     @test msg(() -> r(5, t)) ==
         "resolve: not a column picker. Got 5. " *
-        "Use a name, a vector of names, a predicate such as startswith(\"a\"), " *
-        "everything(), of_type(T) or except(...)."
+        "Use a name, a vector of names, a predicate such as startswith(\"a\") " *
+        "or contains(r\"^q\"), everything(), of_type(T) or except(...)."
     @test_throws MethodError r(:a, [:a, :b])                     # names alone: no method
+end
+
+@testset "catch-all resolve" begin
+    t = mk([:a, :b])
+    @test resolve(Unannotated(), t) == [:a]
+    @test TableOps._resolve(:select, Unannotated(), t) == [:a]
+    want = "resolve: a selector needs a resolve method. Got NoMethod. " *
+        "Define TableOps.resolve(::NoMethod, t::Table) returning the picked names."
+    @test msg(() -> resolve(NoMethod(), t)) == want
+    @test msg(() -> TableOps._resolve(:select, NoMethod(), t)) == want
+    @test_throws MethodError resolve(NoMethod(), [:a])
+    @test Test.detect_ambiguities(TableOps) == []
+end
+
+@testset "user selector names are checked" begin
+    t = mk([:a, :b])
+    bad = "select: column not found. Got :zz. Available columns: :a, :b."
+    @test msg(() -> TableOps._resolve(:select, Fixed([:zz, :a]), t)) == bad
+    @test msg(() -> TableOps._resolve(:select, except(Fixed([:zz, :a])), t)) == bad
+    @test TableOps._resolve(:select, Fixed([:b, :a, :b]), t) == [:b, :a]
+end
+
+@testset "_pickall order" begin
+    t = mk([:revenue, :region, :cost, :q1, :q5, :Q2])
+    @test TableOps._pickall(:select, (:q1, everything(), :cost), t) ==
+        [:q1, :revenue, :region, :cost, :q5, :Q2]
 end
 
 @testset "user selector result is copied" begin

@@ -55,8 +55,9 @@ everything() = Everything()
 
 A column picker for the columns whose element type is a subtype of `T`.
 `missing` is ignored: a `Union{Missing,Float64}` column is a `Float64` column.
-A column that holds only `missing` has element type `Missing` and is picked by
-`of_type(Missing)` or `of_type(Any)` alone. `Bool` is an `Integer`, so
+A column whose element type is `Missing` (such as `[missing, missing]`) is
+picked only by an `of_type(T)` with `Missing <: T`. An empty column of element
+type `Union{}` is picked by every `of_type`. `Bool` is an `Integer`, so
 `of_type(Integer)` picks `Bool` columns too; use `of_type(Int)` to avoid it.
 
 # Examples
@@ -125,7 +126,13 @@ julia> resolve(of_type(Int), t)
 """
 function resolve end
 
-resolve(sel, t::Table) = _notpicker(:resolve, sel)
+function resolve(sel, t)
+    t isa Table || throw(MethodError(resolve, (sel, t)))
+    sel isa AbstractSelector && _argerror(:resolve, "a selector needs a resolve method",
+        Text(string(typeof(sel))),
+        "Define TableOps.resolve(::$(typeof(sel)), t::Table) returning the picked names.")
+    _notpicker(:resolve, sel)
+end
 resolve(sel::_Plain, t::Table)::Vector{Symbol} = _resolve(:resolve, sel, t)
 resolve(sel::Except, t::Table)::Vector{Symbol} = _resolve(:resolve, sel, t)
 resolve(::Everything, t::Table)::Vector{Symbol} = copy(getfield(t, :names))
@@ -135,14 +142,19 @@ function resolve(::OfType{T}, t::Table)::Vector{Symbol} where {T}
 end
 
 _notpicker(verb::Symbol, x) = _argerror(verb, "not a column picker", x,
-    "Use a name, a vector of names, a predicate such as startswith(\"a\"), " *
-    "everything(), of_type(T) or except(...).")
+    "Use a name, a vector of names, a predicate such as startswith(\"a\") " *
+    "or contains(r\"^q\"), everything(), of_type(T) or except(...).")
 
 _ispicker(x) = x isa Union{Symbol,AbstractString,AbstractVector,Function,AbstractSelector}
 
 # The verb names the caller in errors.
-_resolve(verb::Symbol, sel::AbstractSelector, t::Table) =
-    Vector{Symbol}(resolve(sel, t))
+function _resolve(verb::Symbol, sel::AbstractSelector, t::Table)
+    out = Vector{Symbol}(resolve(sel, t))
+    for n in out
+        _position(t, n, verb)
+    end
+    unique!(out)
+end
 _resolve(verb::Symbol, sel, t::Table) = _notpicker(verb, sel)
 function _resolve(verb::Symbol, sel::Symbol, t::Table)
     _position(t, sel, verb)
