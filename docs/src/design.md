@@ -7,7 +7,7 @@ support are marked *(own choice)*.
 
 ## Goals
 
-TableOps brings tidyverse-style data manipulation to Julia: easy to read, fast,
+TableOps brings tidyverse- and SQL-style data manipulation to Julia: easy to read, fast,
 and correct. Six principles decide every design question, in this order when
 they conflict:
 

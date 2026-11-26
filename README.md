@@ -1,12 +1,22 @@
 # TableOps.jl
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)"
+            srcset="docs/src/assets/readme-banner-dark.svg">
+    <img src="docs/src/assets/readme-banner.svg"
+         alt="TableOps.jl: fast, tidyverse- and SQL-style data manipulation for any Tables.jl table"
+         width="640">
+  </picture>
+</p>
+
 [![CI](https://github.com/Akai01/TableOps.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/Akai01/TableOps.jl/actions/workflows/CI.yml)
 [![Docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://Akai01.github.io/TableOps.jl/dev/)
 
 > **In development.** Nothing is usable yet. This README describes the planned
 > API; the full design is in [docs/src/design.md](docs/src/design.md).
 
-Fast, tidyverse-style data manipulation for any
+Fast, tidyverse- and SQL-style data manipulation for any
 [Tables.jl](https://github.com/JuliaData/Tables.jl) table, in pure Julia with
 Tables.jl as the only dependency.
 
