@@ -523,3 +523,157 @@ end
             Table(; (k => getproperty(d, k)[rows] for k in ks)...))
     end
 end
+
+@testset "slice, slice_head, slice_tail" begin
+    d = Table(; a = [10, 20, 30, 40, 50], b = ["p", "q", "r", "s", "t"])
+    empty_d = Table(; a = Int[], b = String[])
+    s1(got) = "slice: row numbers must be integers. Got $got. " *
+        "Pass integers such as slice(t, 2:3) or slice(t, [1, 3]); " *
+        "use where to keep rows by a Bool condition."
+    s2(got) = "slice: row number out of range. Got $got. " *
+        "The table has 5 rows, numbered 1 to 5."
+    notable(v) = "$v: input is not a Tables.jl table. Got Int64. " *
+        "Pass a NamedTuple of vectors, a vector of NamedTuples or another " *
+        "Tables.jl table; collect a generator first: Table(collect(x))."
+    n1(v, got) = "$v: n must be a whole number of 0 or more. Got $got. " *
+        "Write, for example, n = 3."
+    @test same_table(check_forms_agree(slice, d, 2:3),
+        Table(; a = [20, 30], b = ["q", "r"]))
+    @test slice(d, [5, 1, 1]).a == [50, 10, 10]
+    @test same_table(slice(d, 2), Table(; a = [20], b = ["q"]))
+    @test slice(d, 1:2:5).a == [10, 30, 50] && slice(d, 5:-1:4).a == [50, 40]
+    @test slice(d, UInt8[2, 3]).a == [20, 30]
+    @test slice(d, Int16(1):Int16(2)).a == [10, 20]
+    @test slice(d, Int32[3, 1]).a == [30, 10]
+    @test slice(d, UInt8[0x02]).a == [20]
+    @test slice(d, Any[2, UInt8(3)]).a == [20, 30]
+    @test slice(d, Base.IdentityUnitRange(2:3)).a == [20, 30]
+    @test slice(d, view([1, 2, 3, 4], 2:3)).a == [20, 30]
+    @test slice(d, Base.IdentityUnitRange(Int32(2):Int32(3))).a == [20, 30]
+    @test slice(d, Base.IdentityUnitRange(UInt8(2):UInt8(3))).a == [20, 30]
+    v = Any[1, 2]
+    p = slice(v)
+    v[1] = true
+    @test p(d).a == [10, 20]
+    v = Any[1, 2]
+    p = slice(v)
+    v[1] = 3
+    @test p(d).a == [10, 20]
+    w = [1, 2]
+    p = slice(w)
+    w[1] = 99
+    @test p(d).a == [10, 20]
+    @test same_table(slice(d, Int[]), empty_d)
+    @test same_table(slice(d, 1:0), empty_d)
+    @test same_table(slice(d, Any[]), empty_d)
+    @test same_table(slice(d, 1:5), d) && rc(slice(d, 1:5))[1] !== rc(d)[1]
+    @test same_table(slice(Table(), 1:0), Table())
+    @test same_table(slice(Table(; a = [7]), 1), Table(; a = [7]))
+    @test slice(Table(; var"unit price" = [1.0, 2.0]), [2]).var"unit price" == [2.0]
+    @test same_table(slice(Table(; m = [missing, missing]), [2]),
+        Table(; m = Missing[missing]))
+    check_input_unchanged(x -> slice(x, [3, 3]), d)
+    check_concrete_eltypes(slice(d, 2:3))
+    @test same_table(d |> slice([2, 3]), slice(d, [2, 3])) && slice(2:3) isa Function
+    @test same_table(slice((a = [1, 2],), 2), Table(; a = [2]))
+    @test @inferred(TableOps._rownumbers(2:3)) === 2:3
+    @test @inferred(TableOps._rownumbers([2, 3])) == [2, 3]
+    @test @inferred(TableOps._asint([2, 3])) == [2, 3]
+    @test @inferred(TableOps._asint(Int32[2, 3])) isa Vector{Int}
+    @test @inferred(TableOps._checkrows(2:3, 5)) === nothing
+    @test @inferred(TableOps._slice(d, 2:3)) isa Table
+    @test msg(() -> slice(d, 6)) == s2(6)
+    @test msg(() -> slice(d, 0)) == s2(0)
+    @test msg(() -> slice(d, [1, -1, 9])) == s2(-1)
+    @test msg(() -> slice(d, 4:7)) == s2(6)
+    @test msg(() -> slice(d, UInt8[9])) == s2("0x09")
+    @test msg(() -> slice(d, Base.IdentityUnitRange(4:7))) == s2(6)
+    @test msg(() -> slice(d, [big(10)^30])) == s2(big(10)^30)
+    @test msg(() -> slice(d, Any[1, big(10)^30])) == s2(big(10)^30)
+    @test msg(() -> slice(d, -big(10)^30)) == s2(-big(10)^30)
+    @test msg(() -> slice(d, typemax(UInt))) == s2("0xffffffffffffffff")
+    @test msg(() -> slice(d, typemax(Int))) == s2(typemax(Int))
+    @test msg(() -> slice(Table(; a = Int[]), 1)) ==
+        "slice: row number out of range. Got 1. The table has no rows."
+    @test msg(() -> slice(Table(), 1)) ==
+        "slice: row number out of range. Got 1. The table has no rows."
+    @test msg(() -> slice(2:9)(d)) == msg(() -> slice(d, 2:9))
+    @test msg(() -> slice(2:9)(d)) == s2(6)
+    @test msg(() -> slice(d, [1.5])) == s1("[1.5]")
+    @test msg(() -> slice([1.5])) == s1("[1.5]")
+    @test msg(() -> slice(d, [true, false, true, false, true])) ==
+        s1("Bool[1, 0, 1, 0, 1]")
+    @test msg(() -> slice(d, trues(5))) == s1("Bool[1, 1, 1, 1, 1]")
+    @test msg(() -> slice(d, true)) == s1("true")
+    @test msg(() -> slice(d, "a")) == s1("\"a\"")
+    @test msg(() -> slice(d, 1.0)) == s1("1.0")
+    @test msg(() -> slice(d, [1, missing])) == s1("Union{Missing, Int64}[1, missing]")
+    @test msg(() -> slice(d, Any[1, true])) == s1("Any[1, true]")
+    @test msg(() -> slice(d, Integer[1, true])) == s1("Integer[1, true]")
+    @test msg(() -> slice(d, Union{Int,Bool}[1, true])) ==
+        s1("Union{Bool, Int64}[1, true]")
+    @test msg(() -> slice(d, Union{Int,Bool}[true])) == s1("Union{Bool, Int64}[true]")
+    @test slice(d, Integer[2, 3]).a == [20, 30]
+    @test slice(d, Union{Int,Bool}[2, 3]).a == [20, 30]
+    @test slice(d, Union{Missing,Int}[2, 3]).a == [20, 30]
+    @test msg(() -> slice(d, 1:6)) == s2(6)
+    @test @elapsed(msg(() -> slice(d, 1:typemax(Int)))) < 1
+    @test msg(() -> slice(d, 1:typemax(Int))) == s2(6)
+    @test msg(() -> slice(d, typemin(Int):5)) == s2(typemin(Int))
+    um = Table(; m = Union{Missing,Int}[1, missing, 3], 名前 = ["x", "y", "z"])
+    @test same_table(slice(um, [2, 3]),
+        Table(; m = Union{Missing,Int}[missing, 3], 名前 = ["y", "z"]))
+    @test same_table(slice_head(um; n = 2),
+        Table(; m = Union{Missing,Int}[1, missing], 名前 = ["x", "y"]))
+    @test same_table(slice_tail(um; n = 0),
+        Table(; m = Union{Missing,Int}[], 名前 = String[]))
+    @test msg(() -> slice(d)) == s1(TableOps._fmt_value(d))
+    @test msg(() -> slice(5, 1)) == notable(:slice)
+
+    h = check_forms_agree(slice_head, d; n = 2)
+    @test same_table(h, Table(; a = [10, 20], b = ["p", "q"]))
+    @test same_table(slice_head(d; n = 0), empty_d)
+    @test same_table(slice_head(d; n = 5), d) && same_table(slice_head(d; n = 99), d)
+    @test same_table(slice_head(d; n = typemax(Int)), d)
+    @test rc(slice_head(d; n = 99))[1] !== rc(d)[1]
+    @test same_table(slice_head(d; n = typemax(UInt)), d)
+    @test same_table(slice_head(d; n = big(10)^30), d)
+    @test same_table(slice_tail(d; n = big(10)^30), d)
+    @test same_table(slice_tail(d; n = typemax(UInt)), d)
+    @test same_table(slice_head(d; n = UInt8(1)), Table(; a = [10], b = ["p"]))
+    @test same_table(check_forms_agree(slice_tail, d; n = 2),
+        Table(; a = [40, 50], b = ["s", "t"]))
+    @test same_table(slice_tail(d; n = 0), empty_d)
+    @test same_table(slice_tail(d; n = 99), d) && slice_tail(d; n = 5).a == d.a
+    @test rc(slice_tail(d; n = 99))[1] !== rc(d)[1]
+    @test slice_head(Table(; a = Int[]); n = 3).a == Int[]
+    @test ncol(slice_tail(Table(); n = 2)) == 0
+    @test slice_head(Table(; a = [1]); n = 1).a == [1]
+    @test slice_tail(Table(; a = [1]); n = 3).a == [1]
+    @test same_table(d |> slice_head(; n = 1), slice_head(d; n = 1))
+    @test slice_head(; n = 1) isa Function && slice_tail(; n = 1) isa Function
+    check_input_unchanged(x -> slice_tail(x; n = 2), d)
+    check_input_unchanged(x -> slice_head(x; n = 2), d)
+    check_concrete_eltypes(slice_head(d; n = 2))
+    check_concrete_eltypes(slice_tail(d; n = 2))
+    @test @inferred(TableOps._checkn(:slice_head, 3)) === 3
+    @test TableOps._checkn(:slice_head, typemax(UInt)) === typemax(Int)
+    @test TableOps._checkn(:slice_head, big(10)^30) === typemax(Int)
+    @test @inferred(TableOps._slice_head(d, 2)) isa Table
+    @test @inferred(TableOps._slice_tail(d, 2)) isa Table
+    for v in (slice_head, slice_tail)
+        name = nameof(v)
+        @test msg(() -> v(d; n = -1)) == n1(name, -1)
+        @test msg(() -> v(d; n = -big(10)^30)) == n1(name, -big(10)^30)
+        @test msg(() -> v(d; n = 1.5)) == n1(name, 1.5)
+        @test msg(() -> v(d; n = true)) == n1(name, true)
+        @test msg(() -> v(d; n = 2.0)) == n1(name, 2.0)
+        @test msg(() -> v(d; n = missing)) == n1(name, missing)
+        @test msg(() -> v(d; n = "2")) == n1(name, "\"2\"")
+        @test msg(() -> v(d)) == "$name: n is required. Got no n. " *
+            "Write, for example, n = 3."
+        @test msg(() -> v(; n = nothing)) == msg(() -> v(d))
+        @test msg(() -> v(; n = -1)) == n1(name, -1)
+        @test msg(() -> v(5; n = 1)) == notable(name)
+    end
+end

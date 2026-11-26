@@ -326,3 +326,159 @@ function _firstrows(cols::Vector{AbstractVector})
     end
     rows
 end
+
+_isrowno(x) = x isa Integer && !(x isa Bool)
+
+# Wide integers stay as given for the range error.
+function _rownumbers(rows)
+    _isrowno(rows) && return [rows]
+    ok = rows isa AbstractVector && !(eltype(rows) <: Bool) &&
+        (eltype(rows) <: Integer && !(Bool <: eltype(rows)) || all(_isrowno, rows))
+    ok || _argerror(:slice, "row numbers must be integers", rows,
+        "Pass integers such as slice(t, 2:3) or slice(t, [1, 3]); " *
+        "use where to keep rows by a Bool condition.")
+    rows
+end
+
+# Mixed integer types compare exactly, with no conversion.
+function _checkrows(rows::AbstractVector, N::Int)
+    isempty(rows) && return
+    lo, hi = extrema(rows)
+    1 <= lo && hi <= N && return
+    _badrow(rows, N)
+end
+
+# findfirst fails on ranges whose length overflows Int.
+function _badrow(rows::AbstractVector, N::Int)
+    for r in rows
+        (r < 1 || r > N) && _argerror(:slice, "row number out of range", r,
+            N == 0 ? "The table has no rows." : "The table has $N rows, numbered 1 to $N.")
+    end
+end
+
+_asint(rows::Union{AbstractUnitRange{Int},Vector{Int}}) = rows
+_asint(rows::AbstractVector) = Vector{Int}(rows)
+
+function _slice(t::Table, rows::AbstractVector)::Table
+    _checkrows(rows, nrow(t))
+    _take(t, _asint(rows))
+end
+
+"""
+    slice(t, rows)
+    slice(rows)
+
+Keep the rows of `t` with the given row numbers. `rows` is one integer, a
+range or a vector of integers (any integer type, but not `Bool`). The rows come
+in the order given and duplicates are kept, so `slice(t, [3, 1, 1])` returns
+row 3, then row 1 twice. A number outside `1:nrow(t)` (zero, negative or too
+large) is an error that shows the first bad number and the valid range. There
+are no negative numbers to drop rows, and a `Bool` vector is an error: to keep
+rows by a condition use [`where`](@ref).
+
+In the pipe form the row numbers are checked when `slice(rows)` is called and
+their range when the result is applied to a table. The result never shares
+columns with the input.
+
+# Examples
+```jldoctest
+julia> using TableOps
+
+julia> t = Table(; a = [3, 1, 2], b = ["x", "y", "z"]);
+
+julia> pull(slice(t, [3, 1]), :b)
+2-element Vector{String}:
+ "z"
+ "x"
+
+julia> pull(t |> slice(2:3), :b)
+2-element Vector{String}:
+ "y"
+ "z"
+```
+"""
+slice(t, rows) = _slice(_table(t, :slice), _rownumbers(rows))
+function slice(rows)
+    r = copy(_rownumbers(rows))
+    t -> _slice(_table(t, :slice), r)
+end
+
+function _checkn(verb::Symbol, n)
+    n === nothing && _argerror(verb, "n is required", Text("no n"),
+        "Write, for example, n = 3.")
+    n isa Integer && !(n isa Bool) && n >= 0 || _argerror(verb,
+        "n must be a whole number of 0 or more", n, "Write, for example, n = 3.")
+    Int(min(n, typemax(Int)))
+end
+
+"""
+    slice_head(t; n)
+    slice_head(; n)
+
+Keep the first `n` rows of `t`, in their order. `n` is a whole number of 0 or
+more (any integer type, but not `Bool`) and is required. `n = 0` gives no rows
+and keeps the column types; an `n` larger than the number of rows returns all
+rows. The result never shares columns with the input.
+
+# Examples
+```jldoctest
+julia> using TableOps
+
+julia> t = Table(; a = [3, 1, 2], b = ["x", "y", "z"]);
+
+julia> pull(slice_head(t; n = 2), :b)
+2-element Vector{String}:
+ "x"
+ "y"
+
+julia> pull(t |> slice_head(; n = 1), :b)
+1-element Vector{String}:
+ "x"
+```
+"""
+function slice_head(t; n = nothing)
+    _slice_head(_table(t, :slice_head), _checkn(:slice_head, n))
+end
+function slice_head(; n = nothing)
+    k = _checkn(:slice_head, n)
+    t -> _slice_head(_table(t, :slice_head), k)
+end
+_slice_head(t::Table, n::Int) = _take(t, 1:min(n, nrow(t)))
+
+"""
+    slice_tail(t; n)
+    slice_tail(; n)
+
+Keep the last `n` rows of `t`, in their original order (not reversed). `n` is
+a whole number of 0 or more (any integer type, but not `Bool`) and is
+required. `n = 0` gives no rows and keeps the column types; an `n` larger than
+the number of rows returns all rows. The result never shares columns with the
+input.
+
+# Examples
+```jldoctest
+julia> using TableOps
+
+julia> t = Table(; a = [3, 1, 2], b = ["x", "y", "z"]);
+
+julia> pull(slice_tail(t; n = 2), :b)
+2-element Vector{String}:
+ "y"
+ "z"
+
+julia> pull(t |> slice_tail(; n = 1), :b)
+1-element Vector{String}:
+ "z"
+```
+"""
+function slice_tail(t; n = nothing)
+    _slice_tail(_table(t, :slice_tail), _checkn(:slice_tail, n))
+end
+function slice_tail(; n = nothing)
+    k = _checkn(:slice_tail, n)
+    t -> _slice_tail(_table(t, :slice_tail), k)
+end
+function _slice_tail(t::Table, n::Int)
+    N = nrow(t)
+    _take(t, N - min(n, N) + 1:N)
+end

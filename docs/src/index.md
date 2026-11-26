@@ -48,4 +48,7 @@ TableOps.where
 arrange
 desc
 distinct
+slice
+slice_head
+slice_tail
 ```

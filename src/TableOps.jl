@@ -12,6 +12,7 @@ export AbstractSelector, resolve, everything, of_type, except
 export each
 export select, rename, relocate, pull, mutate
 export where, arrange, desc, distinct
+export slice, slice_head, slice_tail
 
 include("errors.jl")
 include("table.jl")
