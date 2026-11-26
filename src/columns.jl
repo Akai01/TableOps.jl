@@ -146,10 +146,13 @@ function _rename(t::Table, renames)::Table
     done = Dict{Int,Symbol}()
     for (new, old) in pairs(renames)
         i = _position(t, Symbol(old), :rename)
-        haskey(done, i) && _argerror(:rename, "a column cannot get two new names",
-            Symbol(old), "To keep it under both names use select(t; " *
-            "$(_kwname(done[i])) = $(repr(Symbol(old))), " *
-            "$(_kwname(new)) = $(repr(Symbol(old)))).")
+        if haskey(done, i)
+            prev = done[i]
+            _argerror(:rename, "a column cannot get two new names", Symbol(old),
+                "Rename it once, then add a copy: mutate(rename(t; " *
+                "$(_kwname(prev)) = $(repr(Symbol(old)))); " *
+                "$(_kwname(new)) = $(repr(prev))).")
+        end
         done[i] = new
         names[i] = new
     end
@@ -269,3 +272,155 @@ _colname(verb::Symbol, x) = _argerror(verb, "needs a column name", x,
     "Write pull(t, :a); to use a position write pull(t, names(t)[1]).")
 
 _pull(t::Table, col)::AbstractVector = _column(t, _colname(:pull, col), :pull)
+
+"""
+    mutate(t, specs...; name = spec, ...)
+    mutate(specs...; name = spec, ...)
+
+A table with the columns that the keyword specifications compute, added at the
+end, or replacing the column of the same name in its place. Specifications run
+in the order written and each sees the table with all earlier results, so
+`mutate(t; b = :a => each(x -> x + 1), c = :b)` works. The specifications are:
+
+| Spec | Meaning |
+|---|---|
+| `name = :a` | a copy of column `a` |
+| `name = :a => f` | `f(a)`, a function of the whole column |
+| `name = [:a, :b] => f` | `f(a, b)` |
+| `name = :a => each(f)` | `f` applied to each element of `a` |
+| `name = t -> …` | a function of the table so far |
+| `name = value` | a constant, repeated for every row |
+| `name = vector` | a new column, one value per row |
+
+A `Symbol` on the right of `name =` is a column, a `String` is a constant.
+A result of length 1 is repeated for every row; any other length except the row
+count is an error. A result that is not a `Vector` (a range, a view) is
+copied into one. A result that is a column of the table is copied, so two
+columns never share a vector; a vector you pass that is not a column of the table
+is kept as it is, not copied, as in `Table`. A result with an abstract element
+type, such as `Vector{Any}`, becomes a vector of the one concrete type it
+holds (plus `missing`), or `Vector{Missing}` when it holds no value other than
+`missing`; a mixture of types is an error. A tuple, `NamedTuple`, matrix,
+generator, set or dictionary is an error, not a constant: write `name = [x]` to
+put one in every row. Unchanged columns are shared with `t`.
+A specification without a name, such as `mutate(t, :a => sum)`, is an error.
+A table with no columns has no rows. The second form returns a function of
+a table, for use with `|>`.
+
+# Examples
+```jldoctest
+julia> using TableOps
+
+julia> t = Table(; a = [1, 2], b = ["x", "y"], c = [1.5, 2.5]);
+
+julia> pull(mutate(t; d = :a => each(x -> x + 1)), :d)
+2-element Vector{Int64}:
+ 2
+ 3
+
+julia> pull(mutate(t; total = [:a, :c] => (a, c) -> a .+ c), :total)
+2-element Vector{Float64}:
+ 2.5
+ 4.5
+
+julia> pull(mutate(t; region = "EU"), :region)
+2-element Vector{String}:
+ "EU"
+ "EU"
+```
+"""
+function mutate(x, rest...; kw...)
+    if _istable(x)
+        _mutate(_table(x, :mutate), _specs(:mutate, rest, kw))
+    else
+        _ispositional(x) || _firstarg(:mutate, x, "a column specification",
+            "specifications such as mutate(c = :a)")
+        specs = _specs(:mutate, (x, rest...), kw)
+        t -> _mutate(_table(t, :mutate), specs)
+    end
+end
+
+function mutate(; kw...)
+    specs = _specs(:mutate, (), kw)
+    t -> _mutate(_table(t, :mutate), specs)
+end
+
+function _mutate(t::Table, specs::Vector{ColSpec})::Table
+    for s in specs
+        t = _setcolumn(t, s.name, _finish(:mutate, s.name, _run(s, t, :mutate), t))
+    end
+    t
+end
+
+function _finish(verb::Symbol, name::Symbol, r, t::Table)::Vector
+    n = nrow(t)
+    v = _concrete(verb, name, _asvector(verb, name, r, n))
+    if length(v) != n
+        length(v) == 1 || _badlength(verb, name, length(v), t, n)
+        v = _recycle(v, n)
+    end
+    any(c -> Base.mightalias(c, v), getfield(t, :columns)) ? copy(v) : v
+end
+
+function _asvector(verb::Symbol, name::Symbol, r, n::Int)::Vector
+    r isa Vector && return r
+    if r isa AbstractVector
+        Base.has_offset_axes(r) && _argerror(verb,
+            "column $name does not use 1-based indexing", axes(r),
+            "Convert it to a 1-based vector, for example with collect.")
+        return Vector(r)
+    end
+    _checkvalue(verb, r)
+    fill(r, n)
+end
+
+function _concrete(verb::Symbol, name::Symbol, v::Vector{T})::Vector where {T}
+    U = nonmissingtype(T)
+    (T === Missing || isconcretetype(U)) && return v
+    S, miss = _scantypes(verb, name, v)
+    S === nothing ? Vector{Missing}(v) : _narrow(v, S, miss)
+end
+
+# Stops at the second type so the error names two.
+function _scantypes(verb::Symbol, name::Symbol, v::Vector)
+    S, miss = nothing, false
+    for x in v
+        if x === missing
+            miss = true
+        elseif S === nothing
+            S = typeof(x)
+        elseif typeof(x) !== S
+            _argerror(verb, "a column mixes element types",
+                Text("$name holds $S and $(typeof(x))"),
+                "Make the function return one type, for example by converting inside it.")
+        end
+    end
+    S, miss
+end
+
+_narrow(v::Vector, ::Type{S}, miss::Bool) where {S} =
+    miss ? Vector{Union{Missing,S}}(v) : Vector{S}(v)
+
+function _recycle(v::Vector{T}, n::Int)::Vector{T} where {T}
+    out = Vector{T}(undef, n)
+    fill!(out, v[1])
+    out
+end
+
+_badlength(verb::Symbol, name::Symbol, len::Int, t::Table, n::Int) = _argerror(verb,
+    "a column has the wrong length", Text("$name has $len rows, the table has $n"),
+    isempty(getfield(t, :columns)) ?
+    "Build a table from vectors with Table(; name = vector)." :
+    "Return a single value (repeated for every row) or exactly $n values.")
+
+function _setcolumn(t::Table, name::Symbol, v::Vector)::Table
+    names, cols = copy(getfield(t, :names)), copy(getfield(t, :columns))
+    i = get(getfield(t, :lookup), name, 0)
+    if i == 0
+        push!(names, name)
+        push!(cols, v)
+    else
+        cols[i] = v
+    end
+    _newtable(names, cols)
+end

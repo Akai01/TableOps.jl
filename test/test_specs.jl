@@ -72,12 +72,23 @@ isdefined(@__MODULE__, :same_table) || include("checks.jl")
         "Write :col => each(f)."
     @test msg(() -> S(:mutate, (), (; c = (1, 2)))) ==
         "mutate: a value must be a single value or a vector. Got (1, 2). " *
-        "Pass a vector with one value per row, " *
-        "or wrap one tuple or array in a vector: name = [x]."
+        "Pass a vector with one value per row (collect a generator first), " *
+        "or wrap the value in a vector: name = [x]."
     @test msg(() -> S(:mutate, (), (; c = [1 2; 3 4]))) ==
         "mutate: a value must be a single value or a vector. Got [1 2; 3 4]. " *
-        "Pass a vector with one value per row, " *
-        "or wrap one tuple or array in a vector: name = [x]."
+        "Pass a vector with one value per row (collect a generator first), " *
+        "or wrap the value in a vector: name = [x]."
+    for (bad, shown) in (((a = 1,), "(a = 1,)"), (Set([1]), "Set([1])"),
+                         (Dict(:a => 1), "Dict(:a => 1)"))
+        @test msg(() -> S(:mutate, (), (; c = bad))) ==
+            "mutate: a value must be a single value or a vector. Got $shown. " *
+            "Pass a vector with one value per row (collect a generator first), " *
+            "or wrap the value in a vector: name = [x]."
+    end
+    g = (x for x in 1:3)
+    @test occursin("a value must be a single value or a vector. Got Base.Generator",
+        msg(() -> S(:mutate, (), (; c = g))))
+    @test S(:mutate, (), (; c = [(a = 1,)])) isa Vector       # wrapped: fine
 end
 
 @testset "each" begin

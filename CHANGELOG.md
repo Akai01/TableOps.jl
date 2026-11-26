@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `mutate` for ungrouped tables: columns from `name = :col`, `:col => f`,
+  `[:a, :b] => f`, `name = value` and `name = t -> …`. A tuple, `NamedTuple`,
+  matrix, generator, set or dictionary given as a value is an error, not a constant.
 - `select` (with renaming), `rename`, `relocate` and `pull`, each in table-first
   and pipe form.
 - `each` for elementwise column specifications.

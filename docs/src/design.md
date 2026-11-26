@@ -197,7 +197,10 @@ A function always receives **whole columns**:
 Column names may be `Symbol`s or `String`s in pickers and on the left of a
 `=>`. On the right of `name =`, only a `Symbol` names a column: a `String` there
 is a constant (`mutate(t, region = "EU")`). A vector whose length is neither 1
-nor the row count is an error.
+nor the row count is an error. A tuple, `NamedTuple`, matrix, generator, set or
+dictionary, given as a value or returned by a function, is an error rather than
+a constant, so a forgotten `collect` is never repeated silently: write
+`name = [x]` to put one in every row.
 
 ### Column pickers
 

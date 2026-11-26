@@ -75,4 +75,21 @@ import Tables, CSV, Arrow, DataFrames
         @test ct.x === t.x
         @test isequal(ct.x, [1.5, missing, 3.0])
     end
+
+    @testset "verbs on foreign tables" begin
+        df = DataFrames.DataFrame(a = [1, 2], b = ["x", "y"])
+        cc_(x) = getfield(Table(x), :columns)
+        r = mutate(select(df, :a, :b), c = :a => each(x -> x + 1))
+        @test r isa Table
+        @test isequal(DataFrames.DataFrame(r),
+            DataFrames.DataFrame(a = [1, 2], b = ["x", "y"], c = [2, 3]))
+        @test cc_(select(df, :a))[1] === df.a                    # shared with the source
+        ct = Table(CSV.File(IOBuffer("id,name\n1,a\n2,b\n")))
+        @test names(rename(ct; key = :id)) == [:key, :name]
+        a = IOBuffer(); Arrow.write(a, Table(; x = [1.5, missing])); seekstart(a)
+        at = Arrow.Table(a)
+        @test isequal(pull(at, :x), [1.5, missing])
+        y = pull(mutate(at; y = :x => each(x -> x)), :y)
+        @test eltype(y) == Union{Missing,Float64} && isequal(y, [1.5, missing])
+    end
 end

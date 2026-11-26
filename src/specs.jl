@@ -69,13 +69,18 @@ function _spec(verb::Symbol, name::Symbol, x::Pair)
 end
 
 function _spec(verb::Symbol, name::Symbol, x)
-    if x isa Tuple || (x isa AbstractArray && !(x isa AbstractVector))
-        _argerror(verb, "a value must be a single value or a vector", x,
-            "Pass a vector with one value per row, " *
-            "or wrap one tuple or array in a vector: name = [x].")
-    end
+    _checkvalue(verb, x)
     ColSpec(name, Symbol[], Returns(x), ())
 end
+
+# These are usually a forgotten collect.
+_notvalue(x) = x isa Union{Tuple,NamedTuple,Base.Generator,AbstractSet,AbstractDict} ||
+    (x isa AbstractArray && !(x isa AbstractVector))
+
+_checkvalue(verb::Symbol, x) = _notvalue(x) && _argerror(verb,
+    "a value must be a single value or a vector", x,
+    "Pass a vector with one value per row (collect a generator first), " *
+    "or wrap the value in a vector: name = [x].")
 
 _inputs(verb::Symbol, x::Union{Symbol,AbstractString}) = Symbol[Symbol(x)]
 function _inputs(verb::Symbol, x::AbstractVector)

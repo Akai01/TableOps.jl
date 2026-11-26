@@ -142,16 +142,16 @@ end
     @test msg(() -> rename(Table(); x = :a)) ==
         "rename: column not found. Got :a. The table has no columns."
     @test msg(() -> rename(t; var"x y" = :a, z = :a)) ==
-        "rename: a column cannot get two new names. Got :a. " *
-        "To keep it under both names use select(t; var\"x y\" = :a, z = :a)."
+        "rename: a column cannot get two new names. Got :a. Rename it once, " *
+        "then add a copy: mutate(rename(t; var\"x y\" = :a); z = Symbol(\"x y\"))."
     @test msg(() -> rename(t; x = :zz)) ==
         "rename: column not found. Got :zz. Available columns: :a, :b, :c."
     @test msg(() -> rename(t; b = :a)) ==
         "rename: two columns would have the same name. Got :b. " *
         "Rename the other one too, or drop it first with select."
     @test msg(() -> rename(t; x = :a, y = :a)) ==
-        "rename: a column cannot get two new names. Got :a. " *
-        "To keep it under both names use select(t; x = :a, y = :a)."
+        "rename: a column cannot get two new names. Got :a. Rename it once, " *
+        "then add a copy: mutate(rename(t; x = :a); y = :x)."
     @test msg(() -> rename(t, :a => :x)) ==
         "rename: renames are keywords. Got :a => :x. Write rename(t; new = :old)."
     @test msg(() -> rename(:a => :x)) == msg(() -> rename(t, :a => :x))
@@ -232,6 +232,8 @@ struct FakeTable <: TableOps.AbstractTable end
 TableOps.select(::FakeTable, picks...; kw...) = :select
 TableOps.rename(::FakeTable; kw...) = :rename
 TableOps.relocate(::FakeTable, picks...; kw...) = :relocate
+TableOps._mutate(::FakeTable, specs) = :mutate
+struct NoMutateTable <: TableOps.AbstractTable end
 
 @testset "pipe forms check early and call the public verb" begin
     m2 = "select: a vector of columns holds only names. Got 1. " *
@@ -271,4 +273,174 @@ end
 
 @testset "verbs and Base" begin
     @test TableOps.rename !== Base.rename
+end
+
+@testset "mutate" begin
+    c5msg(shown) = "mutate: a value must be a single value or a vector. Got " *
+        shown * ". Pass a vector with one value per row (collect a generator first), " *
+        "or wrap the value in a vector: name = [x]."
+    t = Table(; a = [1, 2, 3], b = [10.0, 20.0, 30.0])
+    t3 = Table(; a = [1, 2, 3], b = ["x", "y", "z"], c = [1.5, missing, 3.5])
+    r = check_forms_agree(mutate, t; c = :a)
+    @test cn(r) == [:a, :b, :c] && r.c == [1, 2, 3] && r.c !== t.a        # a copy
+    @test cc(r)[1] === cc(t)[1] && cc(r)[2] === cc(t)[2]                   # shared
+    v = [7, 8, 9]
+    @test mutate(t; c = v).c === v                                         # kept
+    @test mutate(t; c = :a => sum).c == [6, 6, 6]
+    @test eltype(mutate(t; c = :a => sum).c) == Int
+    @test mutate(t; c = [:a, :b] => (x, y) -> x .+ y).c == [11.0, 22.0, 33.0]
+    @test mutate(t; c = :a => each(x -> x * 2)).c == [2, 4, 6]
+    @test eltype(mutate(t; c = :a => each(x -> x * 2)).c) == Int
+    @test mutate(t; c = [:a, :b] => each((x, y) -> x / y)).c == [0.1, 0.1, 0.1]
+    @test mutate(t; c = "a" => each(x -> -x)).c == [-1, -2, -3]            # String left
+    @test mutate(t; c = tt -> tt.a .+ 1).c == [2, 3, 4]
+    @test mutate(t; r = "EU").r == ["EU", "EU", "EU"]
+    @test eltype(mutate(t; r = "EU").r) == String
+    @test eltype(mutate(t; k = 1).k) == Int && eltype(mutate(t; k = 2.5).k) == Float64
+    @test eltype(mutate(t; k = missing).k) == Missing
+    # position, order, visibility
+    @test cn(mutate(t; a = :b)) == [:a, :b] && mutate(t; a = :b).a == [10.0, 20.0, 30.0]
+    @test cn(mutate(t; z = 1, y = 2)) == [:a, :b, :z, :y]
+    @test mutate(t; c = :a => each(x -> x + 1), d = :c => each(x -> x * 10)).d ==
+        [20, 30, 40]
+    @test mutate(t; a = :a => each(x -> x + 1), c = :a).c == [2, 3, 4]   # sees it
+    @test cn(mutate(t; a = :a => each(x -> x + 1), c = 0)) == [:a, :b, :c]
+    @test mutate(t; c = tt -> tt.a .+ 1, d = tt -> tt.c .* 2).d == [4, 6, 8]  # table has c
+    @test same_table(mutate(t), t)
+    # lengths
+    @test mutate(t; c = [5]).c == [5, 5, 5] && eltype(mutate(t; c = [5]).c) == Int
+    @test eltype(mutate(t; c = Union{Missing,Int}[5]).c) == Union{Missing,Int}
+    @test mutate(Table(; a = [1]); c = [5, 6][1:1]).c == [5]
+    @test @inferred(TableOps._recycle([1], 3)) == [1, 1, 1]
+    @test @inferred(TableOps._recycle(Union{Missing,Int}[1], 0)) == Int[]
+    @test @inferred(TableOps._concrete(:mutate, :c, [1, 2])) == [1, 2]
+    # materialise, alias, narrow
+    @test mutate(t; c = 1:3).c isa Vector{Int}
+    @test mutate(t; c = :a => (x -> view(x, 1:3))).c isa Vector{Int}
+    @test mutate(t; c = :a => (x -> BitVector([true, false, true]))).c isa Vector{Bool}
+    al = mutate(t; c = :a => identity); @test al.c == t.a && al.c !== t.a
+    @test mutate(t; c = t.a).c !== t.a
+    two = mutate(t; c = [1, 2, 3], d = :c); @test two.d == two.c && two.d !== two.c
+    @test mutate(t; c = :a => (x -> Any[1, 2, 3])).c isa Vector{Int}
+    @test mutate(t; c = :a => (x -> Any[1, missing, 3])).c isa Vector{Union{Missing,Int}}
+    @test mutate(t; c = :a => (x -> Real[1, 2, 3])).c isa Vector{Int}
+    @test mutate(t; c = :a => (x -> Any[missing, missing, missing])).c isa Vector{Missing}
+    @test mutate(t; c = :a => each(x -> x == 1 ? "p" : "q")).c isa Vector{String}
+    # missing and NaN in the data
+    d = mutate(t3; d = :c => each(x -> x * 2))
+    @test isequal(d.d, [3.0, missing, 7.0]) && eltype(d.d) == Union{Missing,Float64}
+    @test isequal(mutate(t3; s = :c => sum).s, [missing, missing, missing])
+    @test eltype(mutate(t3; s = :c => sum).s) == Missing
+    nan = Table(; x = [NaN, 1.0])
+    @test mutate(nan; y = :x => each(isnan)).y == [true, false]
+    # all-missing column, no rows, no columns, one row
+    m = Table(; m = [missing, missing])
+    @test eltype(mutate(m; k = :m).k) == Missing
+    @test eltype(mutate(m; k = :m => each(x -> x)).k) == Missing
+    z = Table(; a = Int[])
+    @test mutate(z; c = 1).c == Int[] && eltype(mutate(z; c = 1).c) == Int
+    @test eltype(mutate(z; c = :a => each(x -> x + 1)).c) == Int
+    @test mutate(z; c = [1]).c == Int[] && mutate(z; c = Int[]).c == Int[]
+    @test nrow(mutate(Table(); a = 1)) == 0 && cn(mutate(Table(); a = 1)) == [:a]
+    one = Table(; a = [1]); @test mutate(one; c = [5]).c == [5]
+    # Unicode and space names
+    u = Table(; var"unit price" = [1.0, 2.0], 名前 = ["x", "y"])
+    @test mutate(u; var"total x" = Symbol("unit price") => each(x -> 2x)).var"total x" ==
+        [2.0, 4.0]
+    @test mutate(u; 値 = "名前" => each(uppercase)).値 == ["X", "Y"]
+    # forms, immutability, types
+    check_input_unchanged(x -> mutate(x; c = :a => each(sqrt)), t)
+    check_concrete_eltypes(mutate(t3; k = 1, s = "q", e = :c => each(x -> x), f = :a))
+    @test same_table(mutate(c = :a)(t), mutate(t; c = :a))
+    @test same_table(t |> mutate(c = :a => sum), mutate(t; c = :a => sum))
+    @test mutate(; c = 1) isa Function
+    @test cn(mutate((a = [1, 2],); b = :a => each(x -> x + 1))) == [:a, :b]  # NamedTuple in
+    # a pipe closure builds its specs once
+    f = mutate(c = :a => each(x -> x + 1))
+    @test same_table(f(t), f(t)) && f(t).c == [2, 3, 4]
+    # a NamedTuple per row is a vector, so allowed
+    nt = mutate(t; c = [(a = 1,)])
+    @test eltype(nt.c) == NamedTuple{(:a,),Tuple{Int}} && length(nt.c) == 3
+    # empty abstract results have no values to narrow
+    ze = Table(; a = Int[])
+    @test mutate(ze; c = :a => (x -> Any[])).c isa Vector{Missing}
+    @test mutate(ze; c = :a => (x -> Real[])).c isa Vector{Missing}
+    @test mutate(ze; c = :a => (x -> Union{Missing,Real}[])).c isa Vector{Missing}
+    @test mutate(ze; c = :a => (x -> Int[])).c isa Vector{Int}
+    @test mutate(ze; c = :a => (x -> Union{Missing,Int}[])).c isa Vector{Union{Missing,Int}}
+    @test mutate(ze; c = :a => (x -> Union{}[])).c isa Vector{Missing}
+    @test mutate(ze; c = :a => each(uppercase)).c isa Vector{Missing}
+    @test @inferred(TableOps._concrete(:mutate, :c, Union{Missing,Int}[])) ==
+        Union{Missing,Int}[]
+    # shared memory is copied, not only the same vector
+    rs = mutate(t; s = :a => (x -> reshape(x, 3)))
+    @test rs.s == t.a && !Base.mightalias(rs.s, cc(rs)[1])
+    # a column must use 1-based indexing
+    off = "mutate: column c does not use 1-based indexing. Got " *
+        "(Base.IdentityUnitRange(0:2),). Convert it to a 1-based vector, " *
+        "for example with collect."
+    @test msg(() -> mutate(t; c = Base.IdentityUnitRange(0:2))) == off
+    @test msg(() -> mutate(t; c = :a => (x -> Base.IdentityUnitRange(0:2)))) == off
+    # other AbstractTable types: a method, or a MethodError
+    fk = FakeTable()
+    @test mutate(fk; c = 1) === :mutate && mutate(c = 1)(fk) === :mutate
+    @test_throws MethodError mutate(NoMutateTable(); c = 1)
+    @test_throws MethodError mutate(c = 1)(NoMutateTable())
+    # the pipe form checks its specs at call time
+    @test msg(() -> mutate(c = (1, 2))) == c5msg("(1, 2)")
+    @test msg(() -> mutate(c = :a => 5)) ==
+        "mutate: the right side of => must be a function or each(f). Got 5. " *
+        "Write :a => f, where f takes whole columns, " *
+        "or :a => each(f) to apply f to each element."
+    # errors
+    @test msg(() -> mutate(t, :a => sum)) ==
+        "mutate: a column specification needs a name. Got :a => sum. " *
+        "Write name = :a => sum."
+    @test msg(() -> mutate(:a => sum)) == msg(() -> mutate(t, :a => sum))
+    @test msg(() -> mutate(5; c = 1)) ==
+        "mutate: the first argument is neither a table nor a column specification. " *
+        "Got 5. Pass a table, or specifications such as mutate(c = :a) for the pipe form."
+    @test msg(() -> mutate(t; c = :zz)) ==
+        "mutate: column not found. Got :zz. Available columns: :a, :b."
+    @test msg(() -> mutate(t; c = :zz => sum)) == msg(() -> mutate(t; c = :zz))
+    @test msg(() -> mutate(t; c = [1, 2])) ==
+        "mutate: a column has the wrong length. Got c has 2 rows, the table has 3. " *
+        "Return a single value (repeated for every row) or exactly 3 values."
+    @test msg(() -> mutate(t; c = Int[])) ==
+        "mutate: a column has the wrong length. Got c has 0 rows, the table has 3. " *
+        "Return a single value (repeated for every row) or exactly 3 values."
+    @test msg(() -> mutate(Table(); a = [1, 2])) ==
+        "mutate: a column has the wrong length. Got a has 2 rows, the table has 0. " *
+        "Build a table from vectors with Table(; name = vector)."
+    @test msg(() -> mutate(one; c = [5, 6])) ==
+        "mutate: a column has the wrong length. Got c has 2 rows, the table has 1. " *
+        "Return a single value (repeated for every row) or exactly 1 values."
+    c5 = "mutate: a value must be a single value or a vector. Got "
+    c5fix = ". Pass a vector with one value per row (collect a generator first), " *
+        "or wrap the value in a vector: name = [x]."
+    @test msg(() -> mutate(t; c = (1, 2))) == c5 * "(1, 2)" * c5fix
+    @test msg(() -> mutate(t; c = :a => (x -> (1, 2)))) == c5 * "(1, 2)" * c5fix
+    @test msg(() -> mutate(t; c = (a = 1,))) == c5 * "(a = 1,)" * c5fix
+    @test msg(() -> mutate(t; c = :a => (x -> (a = 1,)))) == c5 * "(a = 1,)" * c5fix
+    @test msg(() -> mutate(t; c = Set([1]))) == c5 * "Set([1])" * c5fix
+    @test msg(() -> mutate(t; c = :a => (x -> Set([1])))) == c5 * "Set([1])" * c5fix
+    @test msg(() -> mutate(t; c = Dict(:a => 1))) == c5 * "Dict(:a => 1)" * c5fix
+    @test msg(() -> mutate(t; c = :a => (x -> Dict(:a => 1)))) ==
+        c5 * "Dict(:a => 1)" * c5fix
+    @test msg(() -> mutate(t; c = [1 2; 3 4])) == c5 * "[1 2; 3 4]" * c5fix
+    @test msg(() -> mutate(t; c = (x for x in 1:3)))[1:length(c5) + 14] ==
+        c5 * "Base.Generator"
+    @test msg(() -> mutate(t; c = :a => (x -> (y for y in x))))[1:length(c5) + 14] ==
+        c5 * "Base.Generator"
+    @test msg(() -> mutate(t; c = :a => each(x -> x == 1 ? 1 : 2.5))) ==
+        "mutate: a column mixes element types. Got c holds Int64 and Float64. " *
+        "Make the function return one type, for example by converting inside it."
+    @test msg(() -> mutate(t; c = :a => (x -> Union{Int,String}[1, "a", 2]))) ==
+        "mutate: a column mixes element types. Got c holds Int64 and String. " *
+        "Make the function return one type, for example by converting inside it."
+    @test msg(() -> mutate(t; c = :a => 5)) ==
+        "mutate: the right side of => must be a function or each(f). Got 5. " *
+        "Write :a => f, where f takes whole columns, " *
+        "or :a => each(f) to apply f to each element."
+    @test_throws DomainError mutate(t; c = :a => each(x -> sqrt(-x)))  # user errors pass
 end

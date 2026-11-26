@@ -10,7 +10,7 @@ import Tables
 export Table, as_table, nrow, ncol, glimpse
 export AbstractSelector, resolve, everything, of_type, except
 export each
-export select, rename, relocate, pull
+export select, rename, relocate, pull, mutate
 
 include("errors.jl")
 include("table.jl")

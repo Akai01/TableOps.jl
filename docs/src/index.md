@@ -38,4 +38,5 @@ select
 TableOps.rename
 relocate
 pull
+mutate
 ```
