@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 231" width="200" height="231" role="img" aria-label="TableOps.jl logo">
+  <title>TableOps.jl</title>
+  <polygon points="100,5.5 195.3,60.5 195.3,170.5 100,225.5 4.7,170.5 4.7,60.5"
+           fill="#1b2233" stroke="#0b0f18" stroke-width="7" stroke-linejoin="round"/>
+  <polygon points="100,13 188.8,64.3 188.8,166.7 100,218 11.2,166.7 11.2,64.3"
+           fill="none" stroke="#e8ecf4" stroke-width="3" stroke-linejoin="round"/>
+  <g transform="translate(48 56)">
+    <rect x="0"  y="0" width="23" height="18" rx="3" fill="#4063d8"/>
+    <rect x="26.3" y="0" width="23" height="18" rx="3" fill="#cb3c33"/>
+    <rect x="52.6" y="0" width="23" height="18" rx="3" fill="#389826"/>
+    <rect x="78.9" y="0" width="23" height="18" rx="3" fill="#9558b2"/>
+    <g fill="#e8ecf4" fill-opacity="0.22">
+      <rect x="0"  y="22" width="23" height="11" rx="2"/>
+      <rect x="26.3" y="22" width="23" height="11" rx="2"/>
+      <rect x="52.6" y="22" width="23" height="11" rx="2"/>
+      <rect x="78.9" y="22" width="23" height="11" rx="2"/>
+      <rect x="0"  y="51" width="23" height="11" rx="2"/>
+      <rect x="26.3" y="51" width="23" height="11" rx="2"/>
+      <rect x="52.6" y="51" width="23" height="11" rx="2"/>
+      <rect x="78.9" y="51" width="23" height="11" rx="2"/>
+    </g>
+    <g fill="#e8ecf4">
+      <rect x="0"  y="36.5" width="23" height="11" rx="2"/>
+      <rect x="26.3" y="36.5" width="23" height="11" rx="2"/>
+      <rect x="52.6" y="36.5" width="23" height="11" rx="2"/>
+      <rect x="78.9" y="36.5" width="23" height="11" rx="2"/>
+    </g>
+  </g>
+  <text x="100" y="145" text-anchor="middle" fill="#e8ecf4"
+        font-family="'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="18" font-weight="700">|&gt;</text>
+  <text x="100" y="176" text-anchor="middle" fill="#e8ecf4"
+        font-family="Inter, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="25" font-weight="700">TableOps</text>
+</svg>
